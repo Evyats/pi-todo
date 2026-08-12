@@ -468,6 +468,20 @@ def update_task(task_id: int, payload: TaskUpdate) -> Task:
                 """,
                 (task_date["scheduled_date"], task_id),
             ).fetchone()[0]
+        elif updates.get("completed") is False:
+            task_date = connection.execute(
+                "SELECT scheduled_date FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if task_date is None:
+                raise HTTPException(status_code=404, detail="Task not found")
+            updates["sort_order"] = connection.execute(
+                """
+                SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks
+                WHERE scheduled_date = ? AND completed = 0
+                  AND parent_task_id IS NULL AND id != ?
+                """,
+                (task_date["scheduled_date"], task_id),
+            ).fetchone()[0]
 
         assignments: list[str] = []
         values: list[str | int | bool] = []
