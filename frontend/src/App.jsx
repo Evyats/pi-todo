@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import '@fontsource/space-grotesk/700.css'
 import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
-  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
@@ -53,19 +52,13 @@ import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-
-const API = '/todo/api/tasks'
-const SUGGESTIONS_API = '/todo/api/suggestions'
-const RECURRING_API = '/todo/api/recurring-tasks'
-const SOUND_OPTIONS = [
-  ['glass-clink', 'Glass clink'],
-  ['soft-bell', 'Soft bell'],
-  ['coin-pickup', 'Coin pickup'],
-  ['digital-success', 'Digital success'],
-  ['crystal-sparkle', 'Crystal sparkle'],
-  ['soft-marimba', 'Soft marimba'],
-]
-const SOUND_OPTION_VALUES = new Set(SOUND_OPTIONS.map(([value]) => value))
+import { request, RECURRING_API, SUGGESTIONS_API, TASKS_API as API } from './api'
+import { SOUND_OPTIONS, playCompletionSound } from './completionSound'
+import { dateKey, upcomingDays } from './dates'
+import { useCompletionPreferences } from './hooks/useCompletionPreferences'
+import { useDaySwipe } from './hooks/useDaySwipe'
+import { useTemplates } from './hooks/useTemplates'
+import { taskOrDayCollision } from './drag/collisionDetection'
 
 const checkBounce = keyframes`
   0% { transform: scale(1); }
@@ -73,8 +66,8 @@ const checkBounce = keyframes`
   75% { transform: scale(.9); }
   100% { transform: scale(1); }
 `
-const completionRing = keyframes`
-  from { transform: scale(.45); opacity: .9; }
+const subtleCompletionRing = keyframes`
+  from { transform: scale(.55); opacity: .38; }
   to { transform: scale(2); opacity: 0; }
 `
 const completionParticle = keyframes`
@@ -85,126 +78,37 @@ const completionPulse = keyframes`
   0%, 100% { background-color: transparent; }
   45% { background-color: rgba(52, 168, 83, .13); }
 `
+const dayDropRipple = keyframes`
+  0% { transform: scale(.92); opacity: .8; }
+  100% { transform: scale(1.12); opacity: 0; }
+`
 
-function playCompletionSound(style = 'glass-clink') {
-  const AudioContext = window.AudioContext || window.webkitAudioContext
-  if (!AudioContext) return
-  const context = new AudioContext()
-  const presets = {
-    'glass-clink': [[1350, 0, .16, 'sine'], [1900, .035, .2, 'sine']],
-    'soft-bell': [[660, 0, .42, 'sine'], [990, .04, .36, 'sine']],
-    'coin-pickup': [[880, 0, .1, 'square'], [1320, .065, .11, 'square'], [1760, .13, .14, 'sine']],
-    'digital-success': [[523, 0, .12, 'sine'], [659, .075, .13, 'sine'], [784, .15, .18, 'sine']],
-    'crystal-sparkle': [[1760, 0, .14, 'sine'], [2349, .055, .15, 'sine'], [2093, .12, .2, 'sine']],
-    'soft-marimba': [[440, 0, .2, 'sine'], [880, 0, .11, 'sine']],
-  }
-  const notes = presets[style] || presets['glass-clink']
-  let finishAt = 0
-  notes.forEach(([frequency, delay, duration, type, endFrequency]) => {
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    oscillator.type = type
-    oscillator.frequency.value = frequency
-    if (endFrequency) {
-      oscillator.frequency.exponentialRampToValueAtTime(
-        endFrequency,
-        context.currentTime + delay + duration,
-      )
-    }
-    oscillator.connect(gain)
-    gain.connect(context.destination)
-    const startsAt = context.currentTime + delay
-    gain.gain.setValueAtTime(0.0001, startsAt)
-    gain.gain.exponentialRampToValueAtTime(0.11, startsAt + 0.008)
-    gain.gain.exponentialRampToValueAtTime(0.0001, startsAt + duration)
-    oscillator.start(startsAt)
-    oscillator.stop(startsAt + duration)
-    finishAt = Math.max(finishAt, delay + duration)
-  })
-  window.setTimeout(() => context.close(), (finishAt + 0.15) * 1000)
-}
-
-function dateKey(value = new Date()) {
-  const year = value.getFullYear()
-  const month = String(value.getMonth() + 1).padStart(2, '0')
-  const day = String(value.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function upcomingDays(today) {
-  const start = new Date(`${today}T12:00:00`)
-  return Array.from({ length: 5 }, (_, offset) => {
-    const value = new Date(start)
-    value.setDate(start.getDate() + offset)
-    return {
-      key: dateKey(value),
-      weekday: value.toLocaleDateString(undefined, { weekday: 'short' }),
-      day: value.getDate(),
-    }
-  })
-}
-
-function taskOrDayCollision(args, dragMode) {
-  const collisionsUnderPointer = pointerWithin(args)
-  const dayUnderPointer = collisionsUnderPointer.find((collision) =>
-    String(collision.id).startsWith('day:'),
+function CompletionEffect() {
+  return (
+    <>
+      <Box sx={{ position: 'absolute', inset: 8, border: 1.5, borderColor: 'success.main', borderRadius: '50%', animation: `${subtleCompletionRing} 340ms ease-out forwards` }} />
+      <Box sx={{ position: 'absolute', inset: 8, border: 1, borderColor: 'success.light', borderRadius: '50%', animation: `${subtleCompletionRing} 300ms 70ms ease-out forwards` }} />
+      {[[0, -27], [22, -15], [25, 10], [8, 27], [-17, 23], [-26, -7], [-10, -25]].map(([x, y], index) => (
+        <Box
+          key={`${x}-${y}`}
+          sx={{
+            '--particle-x': `${x}px`,
+            '--particle-y': `${y}px`,
+            position: 'absolute',
+            top: 18,
+            left: 18,
+            width: index % 2 ? 4 : 6,
+            height: index % 2 ? 7 : 4,
+            bgcolor: ['#34a853', '#fbbc04', '#4285f4', '#ea4335'][index % 4],
+            borderRadius: 0.5,
+            animation: `${completionParticle} 340ms ease-out forwards`,
+          }}
+        />
+      ))}
+    </>
   )
-  if (dayUnderPointer && dragMode !== 'reorder') return [dayUnderPointer]
-
-  const activeTask = args.active.data.current?.task
-  if (activeTask && activeTask.parent_task_id !== null) {
-    const siblingUnderPointer = collisionsUnderPointer.find((collision) =>
-      args.droppableContainers
-        .find((container) => container.id === collision.id)
-        ?.data.current?.task?.parent_task_id
-        === activeTask.parent_task_id,
-    )
-    return siblingUnderPointer ? [siblingUnderPointer] : []
-  }
-
-  if (dragMode === 'nest') {
-    const taskUnderPointer = collisionsUnderPointer.find((collision) =>
-      typeof collision.id === 'number',
-    )
-    return taskUnderPointer ? [taskUnderPointer] : []
-  }
-
-  const siblingContainers = args.droppableContainers.filter(
-    (container) => !String(container.id).startsWith('day:')
-      && container.data.current?.task?.parent_task_id
-        === args.active.data.current?.task?.parent_task_id,
-  )
-  const measuredSiblings = siblingContainers
-    .filter((container) => container.rect.current)
-    .sort((first, second) => first.rect.current.top - second.rect.current.top)
-  const pointerY = args.pointerCoordinates?.y
-    ?? args.collisionRect.top + (args.collisionRect.height / 2)
-
-  if (measuredSiblings.length > 0) {
-    const first = measuredSiblings[0]
-    const last = measuredSiblings[measuredSiblings.length - 1]
-    if (pointerY < first.rect.current.top) {
-      return closestCenter({ ...args, droppableContainers: [first] })
-    }
-    if (pointerY > last.rect.current.bottom) {
-      return closestCenter({ ...args, droppableContainers: [last] })
-    }
-  }
-
-  return closestCenter({
-    ...args,
-    droppableContainers: siblingContainers,
-  })
 }
 
-async function request(url, options) {
-  const response = await fetch(url, options)
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(body.detail || 'Something went wrong')
-  }
-  return response.status === 204 ? null : response.json()
-}
 
 function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false, children, soundEnabled, soundStyle, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false)
@@ -299,6 +203,7 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
         gap: { xs: 0.5, sm: 1.25 },
         py: collapsing ? 0 : 0.35,
         overflow: 'hidden',
+        borderRadius: celebrating ? 1.5 : 0,
         bgcolor: isDragging ? 'action.hover' : 'transparent',
         animation: celebrating ? `${completionPulse} 340ms ease-out` : 'none',
         transition: 'max-height 220ms ease, min-height 220ms ease, padding 220ms ease',
@@ -320,33 +225,16 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
 
       <Box sx={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
         {celebrating && (
-          <>
-            <Box sx={{ position: 'absolute', inset: 8, border: 2, borderColor: 'success.main', borderRadius: '50%', animation: `${completionRing} 340ms ease-out forwards` }} />
-            {[[0, -25], [22, -13], [22, 13], [0, 25], [-22, 13], [-22, -13]].map(([x, y]) => (
-              <Box
-                key={`${x}-${y}`}
-                sx={{
-                  '--particle-x': `${x}px`,
-                  '--particle-y': `${y}px`,
-                  position: 'absolute',
-                  top: 18,
-                  left: 18,
-                  width: 5,
-                  height: 5,
-                  bgcolor: 'success.main',
-                  borderRadius: '50%',
-                  animation: `${completionParticle} 320ms ease-out forwards`,
-                }}
-              />
-            ))}
-          </>
+          <CompletionEffect />
         )}
         <IconButton
           color={task.completed || celebrating ? 'success' : 'default'}
           aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
           disabled={celebrating}
           onClick={toggleCompleted}
-          sx={{ animation: celebrating ? `${checkBounce} 340ms ease-out` : 'none' }}
+          sx={{
+            animation: celebrating ? `${checkBounce} 340ms ease-out` : 'none',
+          }}
         >
           {task.completed || celebrating ? <CheckCircleRoundedIcon /> : <RadioButtonUncheckedRoundedIcon />}
         </IconButton>
@@ -413,7 +301,7 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
   )
 }
 
-function DayTab({ day, selected, onSelect }) {
+function DayTab({ day, selected, celebrating, onSelect }) {
   const { isOver, setNodeRef } = useDroppable({ id: `day:${day.key}` })
 
   return (
@@ -429,8 +317,8 @@ function DayTab({ day, selected, onSelect }) {
         py: 0.45,
         borderRadius: 2,
         color: selected ? 'primary.contrastText' : 'text.secondary',
-        bgcolor: isOver ? 'primary.light' : 'transparent',
-        boxShadow: isOver ? 3 : 0,
+        bgcolor: isOver ? 'action.hover' : 'transparent',
+        boxShadow: 0,
         transition: 'background-color 120ms ease, box-shadow 120ms ease',
         '@media (hover: hover) and (pointer: fine)': {
           '&:hover': {
@@ -439,6 +327,20 @@ function DayTab({ day, selected, onSelect }) {
         },
       }}
     >
+      {celebrating && (
+        <Box
+          aria-hidden
+          sx={{
+            position: 'absolute',
+            inset: 2,
+            border: 2,
+            borderColor: 'primary.light',
+            borderRadius: 2,
+            pointerEvents: 'none',
+            animation: `${dayDropRipple} 380ms cubic-bezier(0.16, 1, 0.3, 1) forwards`,
+          }}
+        />
+      )}
       <Stack spacing={0} sx={{ alignItems: 'center' }}>
         <Typography component="span" variant="caption" sx={{ fontSize: 11, fontWeight: 800, lineHeight: 1.15 }}>
           {day.weekday}
@@ -593,15 +495,15 @@ function TemplatesManager({ emptyText, suggestions, onAdd, onUpdate, onDelete })
   )
 }
 
-function SettingsSection({ title, expanded, onToggle, children }) {
+function SettingsSection({ title, expanded, onToggle, divider = true, children }) {
   return (
-    <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+    <Box sx={{ borderTop: divider ? 1 : 0, borderColor: 'divider' }}>
       <Button
         color="inherit"
         fullWidth
         onClick={onToggle}
         aria-expanded={expanded}
-        sx={{ justifyContent: 'space-between', px: 2, py: 1.25, textTransform: 'none' }}
+        sx={{ justifyContent: 'space-between', px: 2, py: 1.5, fontSize: 15, fontWeight: 500, textTransform: 'none' }}
       >
         {title}
         <ExpandMoreRoundedIcon
@@ -609,7 +511,7 @@ function SettingsSection({ title, expanded, onToggle, children }) {
         />
       </Button>
       <Collapse in={expanded}>{children}</Collapse>
-    </Paper>
+    </Box>
   )
 }
 
@@ -620,26 +522,17 @@ export default function App({ mode, onToggleMode }) {
   const [newTitle, setNewTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [suggestions, setSuggestions] = useState([])
-  const [recurringTasks, setRecurringTasks] = useState([])
   const [settingsSection, setSettingsSection] = useState(null)
   const [completedOpen, setCompletedOpen] = useState(false)
   const [screen, setScreen] = useState('tasks')
-  const [completionSound, setCompletionSound] = useState(() => (
-    localStorage.getItem('pi-todo-completion-sound') !== 'false'
-  ))
-  const [completionSoundStyle, setCompletionSoundStyle] = useState(() => (
-    SOUND_OPTION_VALUES.has(localStorage.getItem('pi-todo-completion-sound-style'))
-      ? localStorage.getItem('pi-todo-completion-sound-style')
-      : 'glass-clink'
-  ))
+  const {
+    enabled: completionSound,
+    setEnabled: setCompletionSound,
+    style: completionSoundStyle,
+    setStyle: setCompletionSoundStyle,
+  } = useCompletionPreferences()
+  const [celebratingDay, setCelebratingDay] = useState(null)
   const [taskComposerOpen, setTaskComposerOpen] = useState(false)
-  const [swipeX, setSwipeX] = useState(0)
-  const [pagerWidth, setPagerWidth] = useState(1)
-  const swipeXRef = useRef(0)
-  const [swipeAnimating, setSwipeAnimating] = useState(false)
-  const swipeStartRef = useRef(null)
-  const swipePagerRef = useRef(null)
   const [nestingTargetId, setNestingTargetId] = useState(null)
   const nestingTargetRef = useRef(null)
   const [dragMode, setDragMode] = useState('reorder')
@@ -659,6 +552,14 @@ export default function App({ mode, onToggleMode }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
   const days = useMemo(() => upcomingDays(today), [today])
+  const suggestionsStore = useTemplates(SUGGESTIONS_API, setError)
+  const recurringStore = useTemplates(RECURRING_API, setError, () => {
+    if (selectedDate === today) {
+      request(`${API}?scheduled_date=${today}`).then(setTasks).catch((err) => setError(err.message))
+    }
+  })
+  const suggestions = suggestionsStore.items
+  const recurringTasks = recurringStore.items
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -680,25 +581,11 @@ export default function App({ mode, onToggleMode }) {
   }, [selectedDate])
 
   useEffect(() => {
-    request(SUGGESTIONS_API)
-      .then(setSuggestions)
-      .catch((err) => setError(err.message))
-  }, [])
-
-  useEffect(() => {
     if (!taskComposerOpen) return undefined
     const preserveScroll = () => window.scrollTo({ top: composerScrollYRef.current })
     window.visualViewport?.addEventListener('resize', preserveScroll)
     return () => window.visualViewport?.removeEventListener('resize', preserveScroll)
   }, [taskComposerOpen])
-
-  useEffect(() => {
-    localStorage.setItem('pi-todo-completion-sound', String(completionSound))
-  }, [completionSound])
-
-  useEffect(() => {
-    localStorage.setItem('pi-todo-completion-sound-style', completionSoundStyle)
-  }, [completionSoundStyle])
 
   useEffect(() => {
     const handleHistoryChange = () => {
@@ -708,18 +595,20 @@ export default function App({ mode, onToggleMode }) {
     return () => window.removeEventListener('popstate', handleHistoryChange)
   }, [])
 
-  useEffect(() => {
-    request(RECURRING_API)
-      .then(setRecurringTasks)
-      .catch((err) => setError(err.message))
-  }, [])
-
   function selectDate(value) {
     if (value === selectedDate) return
     setLoading(true)
     setCompletedOpen(false)
     setSelectedDate(value)
   }
+
+  const {
+    offset: swipeX,
+    pagerWidth,
+    animating: swipeAnimating,
+    pagerRef: swipePagerRef,
+    pointerHandlers: daySwipeHandlers,
+  } = useDaySwipe({ days, selectedDate, onSelectDate: selectDate })
 
   function openSettings() {
     window.history.pushState({ ...window.history.state, todoScreen: 'settings' }, '')
@@ -731,75 +620,6 @@ export default function App({ mode, onToggleMode }) {
       window.history.back()
     } else {
       setScreen('tasks')
-    }
-  }
-
-  function startDaySwipe(event) {
-    if (event.pointerType === 'mouse' && event.button !== 0) return
-    if (event.target.closest('input, textarea, [data-no-day-swipe]')) return
-    setPagerWidth(swipePagerRef.current?.clientWidth || 1)
-    swipeStartRef.current = {
-      x: event.clientX,
-      y: event.clientY,
-      time: performance.now(),
-      pointerId: event.pointerId,
-      horizontal: false,
-    }
-  }
-
-  function moveDaySwipe(event) {
-    const start = swipeStartRef.current
-    if (!start || start.pointerId !== event.pointerId) return
-    const deltaX = event.clientX - start.x
-    const deltaY = event.clientY - start.y
-    if (!start.horizontal) {
-      if (Math.abs(deltaX) < 8) return
-      if (Math.abs(deltaY) > Math.abs(deltaX)) {
-        swipeStartRef.current = null
-        return
-      }
-      start.horizontal = true
-      event.currentTarget.setPointerCapture(event.pointerId)
-    }
-    event.preventDefault()
-    const currentIndex = days.findIndex((day) => day.key === selectedDate)
-    const blocked = (currentIndex === 0 && deltaX > 0)
-      || (currentIndex === days.length - 1 && deltaX < 0)
-    const nextX = blocked ? deltaX * 0.18 : deltaX
-    swipeXRef.current = nextX
-    setSwipeX(nextX)
-  }
-
-  function finishDaySwipe(event) {
-    const start = swipeStartRef.current
-    if (!start || start.pointerId !== event.pointerId) return
-    swipeStartRef.current = null
-    if (!start.horizontal) return
-    const width = swipePagerRef.current?.clientWidth || 1
-    const elapsed = Math.max(performance.now() - start.time, 1)
-    const currentSwipeX = swipeXRef.current
-    const velocity = currentSwipeX / elapsed
-    const direction = currentSwipeX < 0 ? 1 : -1
-    const currentIndex = days.findIndex((day) => day.key === selectedDate)
-    const targetIndex = currentIndex + direction
-    const shouldChange = targetIndex >= 0
-      && targetIndex < days.length
-      && (Math.abs(currentSwipeX) > width * 0.22 || Math.abs(velocity) > 0.45)
-
-    setSwipeAnimating(true)
-    if (shouldChange) {
-      setSwipeX(direction === 1 ? -width : width)
-      swipeXRef.current = direction === 1 ? -width : width
-      window.setTimeout(() => {
-        selectDate(days[targetIndex].key)
-        setSwipeAnimating(false)
-        swipeXRef.current = 0
-        setSwipeX(0)
-      }, 120)
-    } else {
-      setSwipeX(0)
-      swipeXRef.current = 0
-      window.setTimeout(() => setSwipeAnimating(false), 120)
     }
   }
 
@@ -846,117 +666,6 @@ export default function App({ mode, onToggleMode }) {
         body: JSON.stringify({ scheduled_date: selectedDate }),
       })
       setTasks((current) => [divider, ...current])
-      setError('')
-    } catch (err) {
-      setError(err.message)
-    }
-  }
-
-  async function addSuggestion(title, estimatedMinutes) {
-    const cleanTitle = title.trim()
-    if (!cleanTitle) return false
-    try {
-      const suggestion = await request(SUGGESTIONS_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: cleanTitle,
-          estimated_minutes: estimatedMinutes === '' ? null : estimatedMinutes,
-        }),
-      })
-      setSuggestions((current) => [...current, suggestion].sort((a, b) => a.title.localeCompare(b.title)))
-      setError('')
-      return true
-    } catch (err) {
-      setError(err.message)
-      return false
-    }
-  }
-
-  async function updateSuggestion(id, title, estimatedMinutes) {
-    const cleanTitle = title.trim()
-    if (!cleanTitle) return false
-    try {
-      const updated = await request(`${SUGGESTIONS_API}/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: cleanTitle,
-          estimated_minutes: estimatedMinutes === '' ? null : estimatedMinutes,
-        }),
-      })
-      setSuggestions((current) => current
-        .map((suggestion) => (suggestion.id === id ? updated : suggestion))
-        .sort((a, b) => a.title.localeCompare(b.title)))
-      setError('')
-      return true
-    } catch (err) {
-      setError(err.message)
-      return false
-    }
-  }
-
-  async function deleteSuggestion(id) {
-    try {
-      await request(`${SUGGESTIONS_API}/${id}`, { method: 'DELETE' })
-      setSuggestions((current) => current.filter((suggestion) => suggestion.id !== id))
-      setError('')
-    } catch (err) {
-      setError(err.message)
-    }
-  }
-
-  async function addRecurringTask(title, estimatedMinutes) {
-    const cleanTitle = title.trim()
-    if (!cleanTitle) return false
-    try {
-      const recurringTask = await request(RECURRING_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: cleanTitle,
-          estimated_minutes: estimatedMinutes === '' ? null : estimatedMinutes,
-        }),
-      })
-      setRecurringTasks((current) => [...current, recurringTask].sort((a, b) => a.title.localeCompare(b.title)))
-      if (selectedDate === today) {
-        request(`${API}?scheduled_date=${today}`).then(setTasks).catch((err) => setError(err.message))
-      }
-      setError('')
-      return true
-    } catch (err) {
-      setError(err.message)
-      return false
-    }
-  }
-
-  async function updateRecurringTask(id, title, estimatedMinutes) {
-    const cleanTitle = title.trim()
-    if (!cleanTitle) return false
-    try {
-      const updated = await request(`${RECURRING_API}/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: cleanTitle,
-          estimated_minutes: estimatedMinutes === '' ? null : estimatedMinutes,
-        }),
-      })
-      setRecurringTasks((current) => current
-        .map((item) => (item.id === id ? updated : item))
-        .sort((a, b) => a.title.localeCompare(b.title)))
-      setError('')
-      return true
-    } catch (err) {
-      setError(err.message)
-      return false
-    }
-  }
-
-  async function deleteRecurringTask(id) {
-    try {
-      await request(`${RECURRING_API}/${id}`, { method: 'DELETE' })
-      setRecurringTasks((current) => current.filter((item) => item.id !== id))
       setError('')
     } catch (err) {
       setError(err.message)
@@ -1018,6 +727,41 @@ export default function App({ mode, onToggleMode }) {
     const tasksBeforeDrag = dragStartTasksRef.current
     boundaryPositionRef.current = null
     dragStartTasksRef.current = null
+    const overId = String(over?.id ?? '')
+    if (overId.startsWith('day:')) {
+      const targetDate = overId.slice(4)
+      if (targetDate === selectedDate) return
+      if (activeTask.recurring_task_id !== null) {
+        setError('Recurring tasks cannot be moved to another day')
+        return
+      }
+      if (activeTask.is_divider) {
+        setError('Dividers cannot be moved to another day')
+        return
+      }
+      const previous = tasksBeforeDrag || tasks
+      setCollapsingTaskId(active.id)
+      const collapseTimer = window.setTimeout(() => {
+        setTasks((current) => current.filter((task) => task.id !== active.id))
+        setCollapsingTaskId(null)
+      }, 220)
+      try {
+        await request(`${API}/${active.id}/schedule`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduled_date: targetDate }),
+        })
+        setCelebratingDay(targetDate)
+        window.setTimeout(() => setCelebratingDay(null), 340)
+        setError('')
+      } catch (err) {
+        window.clearTimeout(collapseTimer)
+        setTasks(previous)
+        setCollapsingTaskId(null)
+        setError(err.message)
+      }
+      return
+    }
     if (boundaryPosition && activeTask.parent_task_id === null && !activeTask.is_divider) {
       const group = tasks.filter((task) => !task.completed && task.parent_task_id === null)
       try {
@@ -1053,40 +797,6 @@ export default function App({ mode, onToggleMode }) {
         await moveTaskToParent(activeTask.id, null)
         return
       }
-    }
-
-    const overId = String(over.id)
-    if (overId.startsWith('day:')) {
-      const targetDate = overId.slice(4)
-      if (targetDate === selectedDate) return
-      if (activeTask.recurring_task_id !== null) {
-        setError('Recurring tasks cannot be moved to another day')
-        return
-      }
-      if (activeTask.is_divider) {
-        setError('Dividers cannot be moved to another day')
-        return
-      }
-      const previous = tasks
-      setCollapsingTaskId(active.id)
-      const collapseTimer = window.setTimeout(() => {
-        setTasks((current) => current.filter((task) => task.id !== active.id))
-        setCollapsingTaskId(null)
-      }, 220)
-      try {
-        await request(`${API}/${active.id}/schedule`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scheduled_date: targetDate }),
-        })
-        setError('')
-      } catch (err) {
-        window.clearTimeout(collapseTimer)
-        setTasks(previous)
-        setCollapsingTaskId(null)
-        setError(err.message)
-      }
-      return
     }
 
     if (!overTask || active.id === over.id) return
@@ -1239,18 +949,27 @@ export default function App({ mode, onToggleMode }) {
     0,
     Math.min(days.length - 1, selectedDayIndex - (swipeX / pagerWidth)),
   )
+  const weekStartIndex = days.findIndex((day, index) => index > 0 && day.weekdayIndex === 0)
 
   return (
     <Container maxWidth="sm" sx={{ py: { xs: 4, sm: 8 }, overflowX: 'hidden' }}>
       {screen === 'settings' ? (
         <Stack spacing={3}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <Typography
+              variant="h2"
+              sx={{
+                fontFamily: '"Space Grotesk", sans-serif',
+                fontSize: { xs: 31, sm: 38 },
+                fontWeight: 800,
+                letterSpacing: '-.045em',
+              }}
+            >
+              Settings
+            </Typography>
             <IconButton aria-label="Back to tasks" onClick={closeSettings}>
               <ArrowBackRoundedIcon />
             </IconButton>
-            <Typography variant="h2" sx={{ fontSize: { xs: 30, sm: 36 }, fontWeight: 750, letterSpacing: '-.035em' }}>
-              Settings
-            </Typography>
           </Box>
 
           <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
@@ -1258,77 +977,86 @@ export default function App({ mode, onToggleMode }) {
               color="inherit"
               fullWidth
               onClick={onToggleMode}
-              sx={{ justifyContent: 'space-between', px: 2, py: 1.5, borderRadius: 0, textTransform: 'none' }}
+              sx={{ justifyContent: 'space-between', px: 2, py: 1.5, borderRadius: 0, fontSize: 15, fontWeight: 500, textTransform: 'none' }}
             >
               Dark mode
               {mode === 'dark' ? <LightModeRoundedIcon /> : <DarkModeRoundedIcon />}
             </Button>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 0.75, borderTop: 1, borderColor: 'divider' }}>
-              <Typography>Completion sound</Typography>
+              <Typography sx={{ fontSize: 15, fontWeight: 500 }}>Completion sound</Typography>
               <Switch
                 checked={completionSound}
                 onChange={(event) => setCompletionSound(event.target.checked)}
                 slotProps={{ input: { 'aria-label': 'Completion sound' } }}
               />
             </Box>
+            <SettingsSection
+              title="Sound style"
+              expanded={settingsSection === 'sound'}
+              onToggle={() => setSettingsSection((current) => current === 'sound' ? null : 'sound')}
+            >
+              <List disablePadding sx={{ borderTop: 1, borderColor: 'divider' }}>
+                {SOUND_OPTIONS.map(([value, label]) => (
+                  <ListItem key={value} divider sx={{ py: 0.35, '&:last-child': { borderBottom: 0 } }}>
+                    <Radio
+                      checked={completionSoundStyle === value}
+                      onChange={() => setCompletionSoundStyle(value)}
+                      value={value}
+                      name="completion-sound-style"
+                      slotProps={{ input: { 'aria-label': `Choose ${label}` } }}
+                    />
+                    <Typography sx={{ flex: 1 }}>{label}</Typography>
+                    <IconButton aria-label={`Preview ${label}`} onClick={() => playCompletionSound(value)}>
+                      <VolumeUpRoundedIcon />
+                    </IconButton>
+                  </ListItem>
+                ))}
+              </List>
+            </SettingsSection>
           </Paper>
 
-          <SettingsSection
-            title="Sound style"
-            expanded={settingsSection === 'sound'}
-            onToggle={() => setSettingsSection((current) => current === 'sound' ? null : 'sound')}
-          >
-            <List disablePadding sx={{ borderTop: 1, borderColor: 'divider' }}>
-              {SOUND_OPTIONS.map(([value, label]) => (
-                <ListItem key={value} divider sx={{ py: 0.35, '&:last-child': { borderBottom: 0 } }}>
-                  <Radio
-                    checked={completionSoundStyle === value}
-                    onChange={() => setCompletionSoundStyle(value)}
-                    value={value}
-                    name="completion-sound-style"
-                    slotProps={{ input: { 'aria-label': `Choose ${label}` } }}
-                  />
-                  <Typography sx={{ flex: 1 }}>{label}</Typography>
-                  <IconButton aria-label={`Preview ${label}`} onClick={() => playCompletionSound(value)}>
-                    <VolumeUpRoundedIcon />
-                  </IconButton>
-                </ListItem>
-              ))}
-            </List>
-          </SettingsSection>
-
-          <SettingsSection
-            title="Suggestions"
-            expanded={settingsSection === 'suggestions'}
-            onToggle={() => setSettingsSection((current) => current === 'suggestions' ? null : 'suggestions')}
-          >
-            <TemplatesManager
-              emptyText="No suggestions yet."
-              suggestions={suggestions}
-              onAdd={addSuggestion}
-              onUpdate={updateSuggestion}
-              onDelete={deleteSuggestion}
-            />
-          </SettingsSection>
-
-          <SettingsSection
-            title="Recurring tasks"
-            expanded={settingsSection === 'recurring'}
-            onToggle={() => setSettingsSection((current) => current === 'recurring' ? null : 'recurring')}
-          >
-            <TemplatesManager
-              emptyText="No recurring tasks yet."
-              suggestions={recurringTasks}
-              onAdd={addRecurringTask}
-              onUpdate={updateRecurringTask}
-              onDelete={deleteRecurringTask}
-            />
-          </SettingsSection>
+          <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+            <SettingsSection
+              title="Suggestions"
+              divider={false}
+              expanded={settingsSection === 'suggestions'}
+              onToggle={() => setSettingsSection((current) => current === 'suggestions' ? null : 'suggestions')}
+            >
+              <TemplatesManager
+                emptyText="No suggestions yet."
+                suggestions={suggestions}
+                onAdd={suggestionsStore.add}
+                onUpdate={suggestionsStore.update}
+                onDelete={suggestionsStore.remove}
+              />
+            </SettingsSection>
+            <SettingsSection
+              title="Recurring tasks"
+              expanded={settingsSection === 'recurring'}
+              onToggle={() => setSettingsSection((current) => current === 'recurring' ? null : 'recurring')}
+            >
+              <TemplatesManager
+                emptyText="No recurring tasks yet."
+                suggestions={recurringTasks}
+                onAdd={recurringStore.add}
+                onUpdate={recurringStore.update}
+                onDelete={recurringStore.remove}
+              />
+            </SettingsSection>
+          </Paper>
         </Stack>
       ) : (
       <Stack spacing={3}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-          <Typography variant="h2" sx={{ fontSize: { xs: 30, sm: 36 }, fontWeight: 750, letterSpacing: '-.035em' }}>
+          <Typography
+            variant="h2"
+            sx={{
+              fontFamily: '"Space Grotesk", sans-serif',
+              fontSize: { xs: 31, sm: 38 },
+              fontWeight: 800,
+              letterSpacing: '-.045em',
+            }}
+          >
             Tasks
           </Typography>
           <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
@@ -1389,23 +1117,45 @@ export default function App({ mode, onToggleMode }) {
                   transition: swipeAnimating ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
                 }}
               />
+              {weekStartIndex > 0 && (
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: 'absolute',
+                    zIndex: 2,
+                    top: 7,
+                    bottom: 7,
+                    left: `calc(${weekStartIndex * 20}% - 1px)`,
+                    width: 2,
+                    borderRadius: 1,
+                    bgcolor: 'divider',
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
               {days.map((day, index) => (
-                <DayTab key={day.key} day={day} selected={Math.round(indicatorPosition) === index} onSelect={selectDate} />
+                <DayTab
+                  key={day.key}
+                  day={day}
+                  selected={Math.round(indicatorPosition) === index}
+                  celebrating={celebratingDay === day.key}
+                  onSelect={selectDate}
+                />
               ))}
             </Paper>
 
             <Box
               ref={swipePagerRef}
-              onPointerDown={startDaySwipe}
-              onPointerMove={moveDaySwipe}
-              onPointerUp={finishDaySwipe}
-              onPointerCancel={finishDaySwipe}
+              {...daySwipeHandlers}
               sx={{
                 touchAction: 'pan-y',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 3,
-                minHeight: 'calc(100dvh - 210px)',
+                minHeight: {
+                  xs: 'calc(100dvh - 204px)',
+                  sm: 'calc(100dvh - 268px)',
+                },
                 transform: `translateX(${swipeX}px)`,
                 transition: swipeAnimating ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
               }}

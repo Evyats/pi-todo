@@ -4,116 +4,25 @@ import sqlite3
 
 from fastapi import FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 from .database import get_connection, initialize_database
+from .models import (
+    DividerCreate,
+    RecurringTask,
+    RecurringTaskCreate,
+    RecurringTaskUpdate,
+    Suggestion,
+    SuggestionCreate,
+    SuggestionUpdate,
+    Task,
+    TaskCreate,
+    TaskOrder,
+    TaskParent,
+    TaskSchedule,
+    TaskUpdate,
+)
+from .services.daily_tasks import carry_over_incomplete_tasks, create_today_recurring_tasks
 
 API_PREFIX = "/todo/api"
-
-
-class TaskCreate(BaseModel):
-    title: str
-    scheduled_date: date | None = None
-    suggestion_id: int | None = None
-
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, value: str) -> str:
-        title = value.strip()
-        if not title:
-            raise ValueError("Task title cannot be empty")
-        if len(title) > 300:
-            raise ValueError("Task title cannot exceed 300 characters")
-        return title
-
-
-class TaskUpdate(BaseModel):
-    title: str | None = None
-    completed: bool | None = None
-
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
-        title = value.strip()
-        if not title:
-            raise ValueError("Task title cannot be empty")
-        if len(title) > 300:
-            raise ValueError("Task title cannot exceed 300 characters")
-        return title
-
-
-class Task(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    title: str
-    completed: bool
-    created_at: str
-    scheduled_date: date
-    estimated_minutes: int | None
-    recurring_task_id: int | None
-    parent_task_id: int | None
-    is_divider: bool
-
-
-class TaskOrder(BaseModel):
-    task_ids: list[int]
-    scheduled_date: date
-    parent_task_id: int | None = None
-
-
-class TaskSchedule(BaseModel):
-    scheduled_date: date
-
-
-class TaskParent(BaseModel):
-    parent_task_id: int | None = None
-
-
-class DividerCreate(BaseModel):
-    scheduled_date: date | None = None
-
-
-class SuggestionCreate(BaseModel):
-    title: str
-    estimated_minutes: int | None = Field(default=None, ge=1, le=120)
-
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, value: str) -> str:
-        return TaskCreate.validate_title(value)
-
-
-class SuggestionUpdate(SuggestionCreate):
-    pass
-
-
-class Suggestion(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    title: str
-    estimated_minutes: int | None
-    created_at: str
-
-
-class RecurringTaskCreate(SuggestionCreate):
-    pass
-
-
-class RecurringTaskUpdate(SuggestionCreate):
-    pass
-
-
-class RecurringTask(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    title: str
-    estimated_minutes: int | None
-    created_at: str
 
 
 @asynccontextmanager
@@ -129,73 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def carry_over_incomplete_tasks(connection) -> None:
-    today = date.today().isoformat()
-    overdue = connection.execute(
-        """
-        SELECT id FROM tasks
-        WHERE completed = 0 AND recurring_task_id IS NULL
-          AND is_divider = 0 AND scheduled_date < ?
-        ORDER BY scheduled_date, sort_order, id
-        """,
-        (today,),
-    ).fetchall()
-    if not overdue:
-        return
-
-    next_order = connection.execute(
-        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks WHERE scheduled_date = ?",
-        (today,),
-    ).fetchone()[0]
-    connection.executemany(
-        """
-        UPDATE tasks SET scheduled_date = ?, sort_order = ?, parent_task_id = NULL
-        WHERE id = ?
-        """,
-        [(today, next_order + position, row[0]) for position, row in enumerate(overdue)],
-    )
-
-
-def create_today_recurring_tasks(connection) -> None:
-    today = date.today().isoformat()
-    templates = connection.execute(
-        """
-        SELECT id, title, estimated_minutes FROM recurring_tasks
-        WHERE NOT EXISTS (
-            SELECT 1 FROM tasks
-            WHERE tasks.recurring_task_id = recurring_tasks.id
-              AND tasks.scheduled_date = ?
-        )
-        ORDER BY id
-        """,
-        (today,),
-    ).fetchall()
-    if not templates:
-        return
-    next_order = connection.execute(
-        "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date = ?",
-        (today,),
-    ).fetchone()[0]
-    connection.executemany(
-        """
-        INSERT INTO tasks (
-            title, completed, sort_order, scheduled_date,
-            estimated_minutes, recurring_task_id
-        ) VALUES (?, 0, ?, ?, ?, ?)
-        """,
-        [
-            (
-                template["title"],
-                next_order - position,
-                today,
-                template["estimated_minutes"],
-                template["id"],
-            )
-            for position, template in enumerate(templates)
-        ],
-    )
 
 
 def fetch_task(task_id: int) -> Task:
