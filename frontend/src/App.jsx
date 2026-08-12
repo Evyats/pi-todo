@@ -1,7 +1,24 @@
 import { useEffect, useState } from 'react'
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import DragIndicatorRoundedIcon from '@mui/icons-material/DragIndicatorRounded'
 import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUncheckedRounded'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
@@ -30,6 +47,15 @@ async function request(url, options) {
 function TaskItem({ task, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(task.title)
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id })
 
   async function save(event) {
     event.preventDefault()
@@ -46,10 +72,31 @@ function TaskItem({ task, onUpdate, onDelete }) {
 
   return (
     <ListItem
+      ref={setNodeRef}
       divider
       disableGutters
-      sx={{ minHeight: 68, gap: 1.25, py: 1 }}
+      sx={{
+        minHeight: 68,
+        gap: { xs: 0.5, sm: 1.25 },
+        py: 1,
+        position: 'relative',
+        zIndex: isDragging ? 1 : 'auto',
+        bgcolor: isDragging ? 'action.hover' : 'transparent',
+        opacity: isDragging ? 0.85 : 1,
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
     >
+      <IconButton
+        ref={setActivatorNodeRef}
+        aria-label={`Move ${task.title}`}
+        {...attributes}
+        {...listeners}
+        sx={{ color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+      >
+        <DragIndicatorRoundedIcon />
+      </IconButton>
+
       <IconButton
         color={task.completed ? 'primary' : 'default'}
         aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
@@ -103,6 +150,10 @@ export default function App() {
   const [newTitle, setNewTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   useEffect(() => {
     request(API)
@@ -163,6 +214,29 @@ export default function App() {
     }
   }
 
+  async function reorderTasks(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = tasks.findIndex((task) => task.id === active.id)
+    const newIndex = tasks.findIndex((task) => task.id === over.id)
+    const previous = tasks
+    const reordered = arrayMove(tasks, oldIndex, newIndex)
+    setTasks(reordered)
+
+    try {
+      await request(`${API}/order`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_ids: reordered.map((task) => task.id) }),
+      })
+      setError('')
+    } catch (err) {
+      setTasks(previous)
+      setError(err.message)
+    }
+  }
+
   const remaining = tasks.filter((task) => !task.completed).length
   const completed = tasks.length - remaining
 
@@ -207,13 +281,17 @@ export default function App() {
             <Typography>Nothing to do yet.</Typography>
           </Stack>
         ) : (
-          <Paper elevation={0} sx={{ px: 2, border: 1, borderColor: 'divider', borderRadius: 3 }}>
-            <List disablePadding>
-              {tasks.map((task) => (
-                <TaskItem key={task.id} task={task} onUpdate={updateTask} onDelete={deleteTask} />
-              ))}
-            </List>
-          </Paper>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderTasks}>
+            <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+              <Paper elevation={0} sx={{ px: { xs: 0.5, sm: 2 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
+                <List disablePadding>
+                  {tasks.map((task) => (
+                    <TaskItem key={task.id} task={task} onUpdate={updateTask} onDelete={deleteTask} />
+                  ))}
+                </List>
+              </Paper>
+            </SortableContext>
+          </DndContext>
         )}
 
         {completed > 0 && (

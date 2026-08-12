@@ -49,6 +49,10 @@ class Task(BaseModel):
     created_at: str
 
 
+class TaskOrder(BaseModel):
+    task_ids: list[int]
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     initialize_database()
@@ -87,7 +91,7 @@ def list_tasks() -> list[Task]:
             """
             SELECT id, title, completed, created_at
             FROM tasks
-            ORDER BY completed ASC, id DESC
+            ORDER BY sort_order ASC, id DESC
             """
         ).fetchall()
     return [Task(**dict(row)) for row in rows]
@@ -96,11 +100,33 @@ def list_tasks() -> list[Task]:
 @app.post(f"{API_PREFIX}/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(payload: TaskCreate) -> Task:
     with get_connection() as connection:
+        next_order = connection.execute(
+            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks"
+        ).fetchone()[0]
         cursor = connection.execute(
-            "INSERT INTO tasks (title) VALUES (?)", (payload.title,)
+            "INSERT INTO tasks (title, sort_order) VALUES (?, ?)",
+            (payload.title, next_order),
         )
         task_id = cursor.lastrowid
     return fetch_task(task_id)
+
+
+@app.put(f"{API_PREFIX}/tasks/order", status_code=status.HTTP_204_NO_CONTENT)
+def reorder_tasks(payload: TaskOrder) -> Response:
+    if len(payload.task_ids) != len(set(payload.task_ids)):
+        raise HTTPException(status_code=400, detail="Task IDs must be unique")
+
+    with get_connection() as connection:
+        existing_ids = {
+            row[0] for row in connection.execute("SELECT id FROM tasks").fetchall()
+        }
+        if set(payload.task_ids) != existing_ids:
+            raise HTTPException(status_code=400, detail="Task list is out of date")
+        connection.executemany(
+            "UPDATE tasks SET sort_order = ? WHERE id = ?",
+            [(position, task_id) for position, task_id in enumerate(payload.task_ids)],
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.delete(f"{API_PREFIX}/tasks/completed", status_code=status.HTTP_204_NO_CONTENT)
