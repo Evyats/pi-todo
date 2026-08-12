@@ -6,7 +6,7 @@ readonly repository="/opt/pi-todo/app"
 readonly backend="${repository}/backend"
 readonly venv="/opt/pi-todo/venv"
 readonly frontend_build="${repository}/frontend/dist"
-readonly web_root="/var/www/pi-todo"
+readonly web_root="/var/www/pi-server/todo"
 
 if (( EUID != 0 )); then
     echo "Run this script with sudo." >&2
@@ -53,18 +53,13 @@ install -m 644 "${repository}/deploy/systemd/pi-todo-backup.service" \
     /etc/systemd/system/pi-todo-backup.service
 install -m 644 "${repository}/deploy/systemd/pi-todo-backup.timer" \
     /etc/systemd/system/pi-todo-backup.timer
-install -m 644 "${repository}/deploy/nginx/pi-todo" \
-    /etc/nginx/sites-available/pi-todo
-
 systemctl daemon-reload
-nginx -t
 systemctl restart pi-todo
-systemctl restart nginx
 systemctl enable --now pi-todo-backup.timer
 
 echo "Waiting for the API..."
 for attempt in {1..60}; do
-    if curl --fail --silent http://127.0.0.1/api/health >/dev/null; then
+    if curl --fail --silent http://127.0.0.1:8000/todo/api/health >/dev/null; then
         echo "Deployment completed successfully."
         exit 0
     fi

@@ -48,13 +48,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mv frontend/dist "${RUNNER_TEMP}/frontend-dist"
-          git switch --create deploy --track origin/deploy
-          git merge --no-edit "${SOURCE_SHA}"
-          git rm -r frontend/dist
-          mv "${RUNNER_TEMP}/frontend-dist" frontend/dist
+          if git show-ref --verify --quiet refs/remotes/origin/deploy; then
+            mv frontend/dist "${RUNNER_TEMP}/frontend-dist"
+            git switch --create deploy --track origin/deploy
+            git merge --no-edit "${SOURCE_SHA}"
+            git rm -r --ignore-unmatch frontend/dist
+            mv "${RUNNER_TEMP}/frontend-dist" frontend/dist
+          else
+            git switch --force-create deploy "${SOURCE_SHA}"
+          fi
           git add --force frontend/dist
           if ! git diff --cached --quiet; then
             git commit -m "Build ${SOURCE_SHA}"
           fi
-          git push origin deploy
+          git push --set-upstream origin deploy
