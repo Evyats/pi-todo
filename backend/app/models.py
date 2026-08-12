@@ -1,0 +1,96 @@
+from datetime import date
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class TaskCreate(BaseModel):
+    title: str
+    scheduled_date: date | None = None
+    suggestion_id: int | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("Task title cannot be empty")
+        if len(title) > 300:
+            raise ValueError("Task title cannot exceed 300 characters")
+        return title
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    completed: bool | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str | None) -> str | None:
+        return None if value is None else TaskCreate.validate_title(value)
+
+
+class Task(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    completed: bool
+    created_at: str
+    scheduled_date: date
+    estimated_minutes: int | None
+    recurring_task_id: int | None
+    parent_task_id: int | None
+    is_divider: bool
+
+
+class TaskOrder(BaseModel):
+    task_ids: list[int]
+    scheduled_date: date
+    parent_task_id: int | None = None
+
+
+class TaskSchedule(BaseModel):
+    scheduled_date: date
+
+
+class TaskParent(BaseModel):
+    parent_task_id: int | None = None
+
+
+class DividerCreate(BaseModel):
+    scheduled_date: date | None = None
+
+
+class SuggestionCreate(BaseModel):
+    title: str
+    estimated_minutes: int | None = Field(default=None, ge=1, le=120)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        return TaskCreate.validate_title(value)
+
+
+class SuggestionUpdate(SuggestionCreate):
+    pass
+
+
+class Suggestion(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    estimated_minutes: int | None
+    created_at: str
+
+
+class RecurringTaskCreate(SuggestionCreate):
+    pass
+
+
+class RecurringTaskUpdate(SuggestionCreate):
+    pass
+
+
+class RecurringTask(Suggestion):
+    pass
