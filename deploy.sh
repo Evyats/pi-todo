@@ -5,7 +5,7 @@ readonly app_user="pi-todo"
 readonly repository="/opt/pi-todo/app"
 readonly backend="${repository}/backend"
 readonly venv="/opt/pi-todo/venv"
-readonly frontend_upload="/home/evyats/pi-todo-dist"
+readonly frontend_build="${repository}/frontend/dist"
 readonly web_root="/var/www/pi-todo"
 
 if (( EUID != 0 )); then
@@ -13,21 +13,27 @@ if (( EUID != 0 )); then
     exit 1
 fi
 
-for directory in "$repository" "$backend" "$venv" "$frontend_upload"; do
+for directory in "$repository" "$backend" "$venv"; do
     if [[ ! -d "$directory" ]]; then
         echo "Required directory not found: $directory" >&2
         exit 1
     fi
 done
 
-if [[ ! -f "${frontend_upload}/index.html" ]]; then
-    echo "Frontend build not found at ${frontend_upload}/index.html" >&2
-    echo "Build it on Windows and upload dist first." >&2
+current_branch="$(runuser -u "$app_user" -- git -C "$repository" branch --show-current)"
+if [[ "$current_branch" != "deploy" ]]; then
+    echo "Expected the repository to be on deploy, found: $current_branch" >&2
     exit 1
 fi
 
-echo "Pulling source code..."
-runuser -u "$app_user" -- git -C "$repository" pull --ff-only
+echo "Pulling ready-to-run deployment..."
+runuser -u "$app_user" -- git -C "$repository" pull --ff-only origin deploy
+
+if [[ ! -f "${frontend_build}/index.html" ]]; then
+    echo "Built frontend not found at ${frontend_build}/index.html" >&2
+    echo "Check the GitHub Actions build for the deploy branch." >&2
+    exit 1
+fi
 
 echo "Installing backend dependencies..."
 runuser -u "$app_user" -- \
@@ -35,7 +41,7 @@ runuser -u "$app_user" -- \
 
 echo "Publishing frontend..."
 install -d -m 755 -o root -g root "$web_root"
-cp -a "${frontend_upload}/." "${web_root}/"
+cp -a "${frontend_build}/." "${web_root}/"
 find "$web_root" -type d -exec chmod 755 {} +
 find "$web_root" -type f -exec chmod 644 {} +
 chown -R root:root "$web_root"
