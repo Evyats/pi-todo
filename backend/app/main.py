@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import date
 import sqlite3
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -217,21 +218,34 @@ def delete_recurring_task(recurring_task_id: int) -> Response:
 
 
 @app.get(f"{API_PREFIX}/tasks", response_model=list[Task])
-def list_tasks(scheduled_date: date | None = Query(default=None)) -> list[Task]:
-    requested_date = (scheduled_date or date.today()).isoformat()
+def list_tasks(
+    scheduled_date: Annotated[date | None, Query()] = None,
+    start_date: Annotated[date | None, Query()] = None,
+    end_date: Annotated[date | None, Query()] = None,
+) -> list[Task]:
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(
+            status_code=400, detail="start_date and end_date must be provided together"
+        )
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise HTTPException(status_code=400, detail="start_date must not follow end_date")
+
+    range_start = (start_date or scheduled_date or date.today()).isoformat()
+    range_end = (end_date or scheduled_date or date.today()).isoformat()
+    today = date.today().isoformat()
     with get_connection() as connection:
         carry_over_incomplete_tasks(connection)
-        if requested_date == date.today().isoformat():
+        if range_start <= today <= range_end:
             create_today_recurring_tasks(connection)
         rows = connection.execute(
             """
             SELECT id, title, completed, created_at, scheduled_date,
                    estimated_minutes, recurring_task_id, parent_task_id, is_divider
             FROM tasks
-            WHERE scheduled_date = ?
-            ORDER BY sort_order ASC, id DESC
+            WHERE scheduled_date BETWEEN ? AND ?
+            ORDER BY scheduled_date ASC, sort_order ASC, id DESC
             """,
-            (requested_date,),
+            (range_start, range_end),
         ).fetchall()
     return [Task(**dict(row)) for row in rows]
 
@@ -440,26 +454,47 @@ def update_task(task_id: int, payload: TaskUpdate) -> Task:
     if not updates:
         return fetch_task(task_id)
 
-    assignments: list[str] = []
-    values: list[str | int | bool] = []
-    for field, value in updates.items():
-        assignments.append(f"{field} = ?")
-        values.append(int(value) if field == "completed" else value)
-    values.append(task_id)
-
     with get_connection() as connection:
+        if updates.get("completed") is True:
+            task_date = connection.execute(
+                "SELECT scheduled_date FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if task_date is None:
+                raise HTTPException(status_code=404, detail="Task not found")
+            updates["sort_order"] = connection.execute(
+                """
+                SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks
+                WHERE scheduled_date = ? AND completed = 1 AND id != ?
+                """,
+                (task_date["scheduled_date"], task_id),
+            ).fetchone()[0]
+
+        assignments: list[str] = []
+        values: list[str | int | bool] = []
+        for field, value in updates.items():
+            assignments.append(f"{field} = ?")
+            values.append(int(value) if field == "completed" else value)
+        values.append(task_id)
+
         cursor = connection.execute(
             f"UPDATE tasks SET {', '.join(assignments)} WHERE id = ?", values
         )
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Task not found")
         if updates.get("completed") is True:
-            connection.execute(
-                """
-                UPDATE tasks SET completed = 1, parent_task_id = NULL
-                WHERE parent_task_id = ?
-                """,
+            children = connection.execute(
+                "SELECT id FROM tasks WHERE parent_task_id = ? ORDER BY sort_order, id",
                 (task_id,),
+            ).fetchall()
+            connection.executemany(
+                """
+                UPDATE tasks SET completed = 1, parent_task_id = NULL, sort_order = ?
+                WHERE id = ?
+                """,
+                [
+                    (updates["sort_order"] + position + 1, child["id"])
+                    for position, child in enumerate(children)
+                ],
             )
     return fetch_task(task_id)
 
