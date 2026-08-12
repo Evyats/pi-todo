@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from .database import get_connection, initialize_database
 
+API_PREFIX = "/todo/api"
+
 
 class TaskCreate(BaseModel):
     title: str
@@ -73,12 +75,12 @@ def fetch_task(task_id: int) -> Task:
     return Task(**dict(row))
 
 
-@app.get("/api/health")
+@app.get(f"{API_PREFIX}/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/tasks", response_model=list[Task])
+@app.get(f"{API_PREFIX}/tasks", response_model=list[Task])
 def list_tasks() -> list[Task]:
     with get_connection() as connection:
         rows = connection.execute(
@@ -91,7 +93,7 @@ def list_tasks() -> list[Task]:
     return [Task(**dict(row)) for row in rows]
 
 
-@app.post("/api/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
+@app.post(f"{API_PREFIX}/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(payload: TaskCreate) -> Task:
     with get_connection() as connection:
         cursor = connection.execute(
@@ -101,14 +103,14 @@ def create_task(payload: TaskCreate) -> Task:
     return fetch_task(task_id)
 
 
-@app.delete("/api/tasks/completed", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete(f"{API_PREFIX}/tasks/completed", status_code=status.HTTP_204_NO_CONTENT)
 def delete_completed_tasks() -> Response:
     with get_connection() as connection:
         connection.execute("DELETE FROM tasks WHERE completed = 1")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.patch("/api/tasks/{task_id}", response_model=Task)
+@app.patch(f"{API_PREFIX}/tasks/{{task_id}}", response_model=Task)
 def update_task(task_id: int, payload: TaskUpdate) -> Task:
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
@@ -130,7 +132,7 @@ def update_task(task_id: int, payload: TaskUpdate) -> Task:
     return fetch_task(task_id)
 
 
-@app.delete("/api/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete(f"{API_PREFIX}/tasks/{{task_id}}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: int) -> Response:
     with get_connection() as connection:
         cursor = connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))

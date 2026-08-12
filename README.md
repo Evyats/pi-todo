@@ -27,7 +27,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>.
+Open <http://localhost:5173/todo/>.
 
 The SQLite database is created at `backend/data/tasks.db`. That directory is
 ignored by Git so deployments cannot overwrite your tasks.
@@ -42,3 +42,5 @@ After the workflow succeeds, deploy manually on the Pi:
 ```bash
 sudo /opt/pi-todo/app/deploy.sh
 ```
+
+The private production URL is `/todo/`; its API is under `/todo/api/`.

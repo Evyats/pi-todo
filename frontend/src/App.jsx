@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const API = '/api/tasks'
+const API = '/todo/api/tasks'
 
 async function request(url, options) {
   const response = await fetch(url, options)
