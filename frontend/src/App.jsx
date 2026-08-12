@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  pointerWithin,
+  useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
@@ -15,25 +18,90 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import DarkModeRoundedIcon from '@mui/icons-material/DarkModeRounded'
 import DragIndicatorRoundedIcon from '@mui/icons-material/DragIndicatorRounded'
+import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
+import LightModeRoundedIcon from '@mui/icons-material/LightModeRounded'
 import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUncheckedRounded'
+import RepeatRoundedIcon from '@mui/icons-material/RepeatRounded'
+import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import Alert from '@mui/material/Alert'
+import Autocomplete from '@mui/material/Autocomplete'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Container from '@mui/material/Container'
+import Collapse from '@mui/material/Collapse'
 import IconButton from '@mui/material/IconButton'
 import List from '@mui/material/List'
 import ListItem from '@mui/material/ListItem'
+import LinearProgress from '@mui/material/LinearProgress'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 
 const API = '/todo/api/tasks'
+const SUGGESTIONS_API = '/todo/api/suggestions'
+const RECURRING_API = '/todo/api/recurring-tasks'
+
+function dateKey(value = new Date()) {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function upcomingDays(today) {
+  const start = new Date(`${today}T12:00:00`)
+  return Array.from({ length: 5 }, (_, offset) => {
+    const value = new Date(start)
+    value.setDate(start.getDate() + offset)
+    return {
+      key: dateKey(value),
+      weekday: value.toLocaleDateString(undefined, { weekday: 'short' }),
+      day: value.getDate(),
+    }
+  })
+}
+
+function taskOrDayCollision(args, dragMode) {
+  const collisionsUnderPointer = pointerWithin(args)
+  const dayUnderPointer = collisionsUnderPointer.find((collision) =>
+    String(collision.id).startsWith('day:'),
+  )
+  if (dayUnderPointer) return [dayUnderPointer]
+
+  const activeTask = args.active.data.current?.task
+  if (activeTask && activeTask.parent_task_id !== null) {
+    const siblingUnderPointer = collisionsUnderPointer.find((collision) =>
+      args.droppableContainers
+        .find((container) => container.id === collision.id)
+        ?.data.current?.task?.parent_task_id
+        === activeTask.parent_task_id,
+    )
+    return siblingUnderPointer ? [siblingUnderPointer] : []
+  }
+
+  if (dragMode === 'nest') {
+    const taskUnderPointer = collisionsUnderPointer.find((collision) =>
+      typeof collision.id === 'number',
+    )
+    return taskUnderPointer ? [taskUnderPointer] : []
+  }
+
+  return closestCenter({
+    ...args,
+    droppableContainers: args.droppableContainers.filter(
+      (container) => !String(container.id).startsWith('day:')
+        && container.data.current?.task?.parent_task_id
+          === args.active.data.current?.task?.parent_task_id,
+    ),
+  })
+}
 
 async function request(url, options) {
   const response = await fetch(url, options)
@@ -44,7 +112,7 @@ async function request(url, options) {
   return response.status === 204 ? null : response.json()
 }
 
-function TaskItem({ task, onUpdate, onDelete }) {
+function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false, children, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(task.title)
   const {
@@ -55,13 +123,20 @@ function TaskItem({ task, onUpdate, onDelete }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id })
+  } = useSortable({
+    id: task.id,
+    disabled: task.completed,
+    data: { task },
+  })
 
   async function save(event) {
     event.preventDefault()
     const cleanTitle = title.trim()
-    if (!cleanTitle) return
-    await onUpdate(task.id, { title: cleanTitle })
+    if (!cleanTitle) {
+      cancel()
+      return
+    }
+    if (cleanTitle !== task.title) await onUpdate(task.id, { title: cleanTitle })
     setEditing(false)
   }
 
@@ -71,30 +146,40 @@ function TaskItem({ task, onUpdate, onDelete }) {
   }
 
   return (
-    <ListItem
+    <Box
       ref={setNodeRef}
-      divider
-      disableGutters
       sx={{
-        minHeight: 68,
-        gap: { xs: 0.5, sm: 1.25 },
-        py: 1,
         position: 'relative',
         zIndex: isDragging ? 1 : 'auto',
+        opacity: isDragging || collapsing ? 0 : 1,
+        transform: dragMode === 'reorder' ? CSS.Transform.toString(transform) : undefined,
+        transition: [transition, 'opacity 120ms ease'].filter(Boolean).join(', '),
+      }}
+    >
+    <ListItem
+      divider={!hideDivider}
+      disableGutters
+      sx={{
+        minHeight: collapsing ? 0 : 56,
+        maxHeight: collapsing ? 0 : 500,
+        gap: { xs: 0.5, sm: 1.25 },
+        py: collapsing ? 0 : 0.35,
+        overflow: 'hidden',
         bgcolor: isDragging ? 'action.hover' : 'transparent',
-        opacity: isDragging ? 0.85 : 1,
-        transform: CSS.Transform.toString(transform),
-        transition,
+        transition: 'max-height 220ms ease, min-height 220ms ease, padding 220ms ease',
+        borderBottom: collapsing ? 'none' : undefined,
+        '&:last-child': { borderBottom: 'none' },
       }}
     >
       <IconButton
         ref={setActivatorNodeRef}
         aria-label={`Move ${task.title}`}
+        disabled={task.completed}
         {...attributes}
         {...listeners}
         sx={{ color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
       >
-        <DragIndicatorRoundedIcon />
+        {task.recurring_task_id === null ? <DragIndicatorRoundedIcon /> : <RepeatRoundedIcon />}
       </IconButton>
 
       <IconButton
@@ -105,8 +190,9 @@ function TaskItem({ task, onUpdate, onDelete }) {
         {task.completed ? <CheckCircleRoundedIcon /> : <RadioButtonUncheckedRoundedIcon />}
       </IconButton>
 
+      <Box sx={{ flex: 1, minWidth: 0 }}>
       {editing ? (
-        <Box component="form" onSubmit={save} sx={{ flex: 1 }}>
+        <Box component="form" onSubmit={save}>
           <TextField
             autoFocus
             fullWidth
@@ -115,6 +201,7 @@ function TaskItem({ task, onUpdate, onDelete }) {
             value={title}
             slotProps={{ htmlInput: { maxLength: 300 } }}
             onChange={(event) => setTitle(event.target.value)}
+            onBlur={save}
             onKeyDown={(event) => event.key === 'Escape' && cancel()}
           />
         </Box>
@@ -123,10 +210,10 @@ function TaskItem({ task, onUpdate, onDelete }) {
           color="inherit"
           onClick={() => setEditing(true)}
           sx={{
-            flex: 1,
+            width: '100%',
             justifyContent: 'flex-start',
             px: 0.5,
-            py: 1.25,
+            py: 0.7,
             overflowWrap: 'anywhere',
             color: task.completed ? 'text.disabled' : 'text.primary',
             fontWeight: 400,
@@ -138,42 +225,413 @@ function TaskItem({ task, onUpdate, onDelete }) {
           {task.title}
         </Button>
       )}
+      {task.estimated_minutes && (
+        <Box sx={{ px: 0.5, pb: 0.5 }}>
+          <LinearProgress
+            variant="determinate"
+            value={(task.estimated_minutes / 120) * 100}
+            aria-label={`${task.estimated_minutes} minute estimate`}
+            sx={{ height: 5, borderRadius: 99 }}
+          />
+        </Box>
+      )}
+      </Box>
 
-      <IconButton color="error" aria-label={`Delete ${task.title}`} onClick={() => onDelete(task.id)}>
-        <DeleteOutlineRoundedIcon />
-      </IconButton>
+      {task.completed && task.recurring_task_id === null && (
+        <IconButton color="error" aria-label={`Delete ${task.title}`} onClick={() => onDelete(task.id)}>
+          <DeleteOutlineRoundedIcon />
+        </IconButton>
+      )}
+      {(!task.completed || task.recurring_task_id !== null) && (
+        <Box aria-hidden sx={{ width: 40, height: 40, flexShrink: 0 }} />
+      )}
     </ListItem>
+    {children}
+    </Box>
   )
 }
-export default function App() {
+
+function DayTab({ day, selected, onSelect }) {
+  const { isOver, setNodeRef } = useDroppable({ id: `day:${day.key}` })
+
+  return (
+    <Button
+      ref={setNodeRef}
+      onClick={() => onSelect(day.key)}
+      aria-pressed={selected}
+      sx={{
+        minWidth: 0,
+        flex: 1,
+        py: 0.45,
+        borderRadius: 2,
+        color: selected ? 'primary.contrastText' : 'text.secondary',
+        bgcolor: isOver ? 'primary.light' : selected ? 'primary.main' : 'transparent',
+        boxShadow: isOver ? 3 : 0,
+        transition: 'background-color 120ms ease, box-shadow 120ms ease',
+        '&:hover': {
+          bgcolor: selected ? 'primary.dark' : 'action.hover',
+        },
+      }}
+    >
+      <Stack spacing={0} sx={{ alignItems: 'center' }}>
+        <Typography component="span" variant="caption" sx={{ fontSize: 11, fontWeight: 800, lineHeight: 1.15 }}>
+          {day.weekday}
+        </Typography>
+        <Typography component="span" sx={{ fontSize: 14, fontWeight: 700, lineHeight: 1.25 }}>
+          {day.day}
+        </Typography>
+      </Stack>
+    </Button>
+  )
+}
+
+function DraggedTask({ task, leavingParent = false }) {
+  if (!task) return null
+
+  return (
+    <Paper elevation={5} sx={{ px: 2, py: 1.5, borderRadius: 2.5, cursor: 'grabbing' }}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <DragIndicatorRoundedIcon color="disabled" />
+        <Typography
+          sx={{
+            color: task.completed ? 'text.disabled' : 'text.primary',
+            textDecoration: task.completed ? 'line-through' : 'none',
+          }}
+        >
+          {task.title}
+        </Typography>
+      </Stack>
+      {leavingParent && (
+        <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 0.5, fontWeight: 700 }}>
+          Release to move to main list
+        </Typography>
+      )}
+    </Paper>
+  )
+}
+
+function TemplatesManager({ emptyText, suggestions, onAdd, onUpdate, onDelete }) {
+  const [newTitle, setNewTitle] = useState('')
+  const [newMinutes, setNewMinutes] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [editingMinutes, setEditingMinutes] = useState('')
+
+  async function addSuggestion(event) {
+    event.preventDefault()
+    if (await onAdd(newTitle, newMinutes)) {
+      setNewTitle('')
+      setNewMinutes('')
+    }
+  }
+
+  async function saveSuggestion(event) {
+    event.preventDefault()
+    if (await onUpdate(editingId, editingTitle, editingMinutes)) setEditingId(null)
+  }
+
+  return (
+    <Box sx={{ px: 2, pb: 2, borderTop: 1, borderColor: 'divider' }}>
+        <Stack component="form" direction="row" spacing={1} onSubmit={addSuggestion} sx={{ pt: 2, mb: 2 }}>
+          <TextField
+            fullWidth
+            size="small"
+            label="New suggestion"
+            value={newTitle}
+            slotProps={{ htmlInput: { maxLength: 300 } }}
+            onChange={(event) => setNewTitle(event.target.value)}
+          />
+          <TextField
+            type="number"
+            size="small"
+            label="Minutes"
+            value={newMinutes}
+            slotProps={{ htmlInput: { min: 1, max: 120 } }}
+            onChange={(event) => setNewMinutes(event.target.value === '' ? '' : Number(event.target.value))}
+            sx={{ width: 105, flexShrink: 0 }}
+          />
+          <Button type="submit" variant="contained" disabled={!newTitle.trim() || (newMinutes !== '' && (newMinutes < 1 || newMinutes > 120))} aria-label="Add suggestion">
+            +
+          </Button>
+        </Stack>
+
+        {suggestions.length === 0 ? (
+          <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+            {emptyText}
+          </Typography>
+        ) : (
+          <List disablePadding>
+            {suggestions.map((suggestion) => (
+              <ListItem key={suggestion.id} disableGutters divider sx={{ gap: 1, '&:last-child': { borderBottom: 0 } }}>
+                {editingId === suggestion.id ? (
+                  <Box component="form" onSubmit={saveSuggestion} sx={{ display: 'flex', flex: 1, gap: 1 }}>
+                    <TextField
+                      autoFocus
+                      fullWidth
+                      size="small"
+                      value={editingTitle}
+                      slotProps={{ htmlInput: { maxLength: 300 } }}
+                      onChange={(event) => setEditingTitle(event.target.value)}
+                    />
+                    <TextField
+                      type="number"
+                      size="small"
+                      label="Minutes"
+                      value={editingMinutes}
+                      slotProps={{ htmlInput: { min: 1, max: 120 } }}
+                      onChange={(event) => setEditingMinutes(event.target.value === '' ? '' : Number(event.target.value))}
+                      sx={{ width: 105, flexShrink: 0 }}
+                    />
+                    <Button type="submit" disabled={!editingTitle.trim() || (editingMinutes !== '' && (editingMinutes < 1 || editingMinutes > 120))}>Save</Button>
+                  </Box>
+                ) : (
+                  <Button
+                    color="inherit"
+                    onClick={() => {
+                      setEditingId(suggestion.id)
+                      setEditingTitle(suggestion.title)
+                      setEditingMinutes(suggestion.estimated_minutes ?? '')
+                    }}
+                    sx={{ flex: 1, justifyContent: 'flex-start', textTransform: 'none' }}
+                  >
+                    <Box sx={{ width: '100%', textAlign: 'left' }}>
+                      {suggestion.title}
+                      {suggestion.estimated_minutes && (
+                        <LinearProgress
+                          variant="determinate"
+                          value={(suggestion.estimated_minutes / 120) * 100}
+                          aria-label={`${suggestion.estimated_minutes} minute estimate`}
+                          sx={{ height: 5, mt: 0.75, borderRadius: 99 }}
+                        />
+                      )}
+                    </Box>
+                  </Button>
+                )}
+                <IconButton
+                  color="error"
+                  aria-label={`Delete suggestion ${suggestion.title}`}
+                  onClick={() => onDelete(suggestion.id)}
+                >
+                  <DeleteOutlineRoundedIcon />
+                </IconButton>
+              </ListItem>
+            ))}
+          </List>
+        )}
+    </Box>
+  )
+}
+
+function SettingsSection({ title, expanded, onToggle, children }) {
+  return (
+    <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, overflow: 'hidden' }}>
+      <Button
+        color="inherit"
+        fullWidth
+        onClick={onToggle}
+        aria-expanded={expanded}
+        sx={{ justifyContent: 'space-between', px: 2, py: 1.25, textTransform: 'none' }}
+      >
+        {title}
+        <ExpandMoreRoundedIcon
+          sx={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 180ms ease' }}
+        />
+      </Button>
+      <Collapse in={expanded}>{children}</Collapse>
+    </Paper>
+  )
+}
+
+export default function App({ mode, onToggleMode }) {
+  const [today, setToday] = useState(() => dateKey())
+  const [selectedDate, setSelectedDate] = useState(() => dateKey())
   const [tasks, setTasks] = useState([])
   const [newTitle, setNewTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [suggestions, setSuggestions] = useState([])
+  const [recurringTasks, setRecurringTasks] = useState([])
+  const [settingsSection, setSettingsSection] = useState(null)
+  const [completedOpen, setCompletedOpen] = useState(false)
+  const [screen, setScreen] = useState('tasks')
+  const [nestingTargetId, setNestingTargetId] = useState(null)
+  const nestingTargetRef = useRef(null)
+  const [dragMode, setDragMode] = useState('reorder')
+  const dragModeRef = useRef('reorder')
+  const [leavingParent, setLeavingParent] = useState(false)
+  const [draggedTask, setDraggedTask] = useState(null)
+  const [collapsingTaskId, setCollapsingTaskId] = useState(null)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+  const days = useMemo(() => upcomingDays(today), [today])
 
   useEffect(() => {
-    request(API)
+    const timer = window.setInterval(() => {
+      const currentDate = dateKey()
+      if (currentDate !== today) {
+        setLoading(true)
+        setToday(currentDate)
+        setSelectedDate(currentDate)
+      }
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [today])
+
+  useEffect(() => {
+    request(`${API}?scheduled_date=${selectedDate}`)
       .then(setTasks)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
+  }, [selectedDate])
+
+  useEffect(() => {
+    request(SUGGESTIONS_API)
+      .then(setSuggestions)
+      .catch((err) => setError(err.message))
   }, [])
 
-  async function addTask(event) {
-    event.preventDefault()
-    const title = newTitle.trim()
+  useEffect(() => {
+    request(RECURRING_API)
+      .then(setRecurringTasks)
+      .catch((err) => setError(err.message))
+  }, [])
+
+  function selectDate(value) {
+    if (value === selectedDate) return
+    setLoading(true)
+    setCompletedOpen(false)
+    setSelectedDate(value)
+  }
+
+  async function addTask(event, suggestion = null) {
+    event?.preventDefault()
+    const title = (suggestion?.title ?? newTitle).trim()
     if (!title) return
     try {
       const task = await request(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({
+          title,
+          scheduled_date: selectedDate,
+          suggestion_id: suggestion?.id ?? null,
+        }),
       })
       setTasks((current) => [task, ...current])
       setNewTitle('')
+      setError('')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function addSuggestion(title, estimatedMinutes) {
+    const cleanTitle = title.trim()
+    if (!cleanTitle) return false
+    try {
+      const suggestion = await request(SUGGESTIONS_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: cleanTitle,
+          estimated_minutes: estimatedMinutes === '' ? null : estimatedMinutes,
+        }),
+      })
+      setSuggestions((current) => [...current, suggestion].sort((a, b) => a.title.localeCompare(b.title)))
+      setError('')
+      return true
+    } catch (err) {
+      setError(err.message)
+      return false
+    }
+  }
+
+  async function updateSuggestion(id, title, estimatedMinutes) {
+    const cleanTitle = title.trim()
+    if (!cleanTitle) return false
+    try {
+      const updated = await request(`${SUGGESTIONS_API}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: cleanTitle,
+          estimated_minutes: estimatedMinutes === '' ? null : estimatedMinutes,
+        }),
+      })
+      setSuggestions((current) => current
+        .map((suggestion) => (suggestion.id === id ? updated : suggestion))
+        .sort((a, b) => a.title.localeCompare(b.title)))
+      setError('')
+      return true
+    } catch (err) {
+      setError(err.message)
+      return false
+    }
+  }
+
+  async function deleteSuggestion(id) {
+    try {
+      await request(`${SUGGESTIONS_API}/${id}`, { method: 'DELETE' })
+      setSuggestions((current) => current.filter((suggestion) => suggestion.id !== id))
+      setError('')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function addRecurringTask(title, estimatedMinutes) {
+    const cleanTitle = title.trim()
+    if (!cleanTitle) return false
+    try {
+      const recurringTask = await request(RECURRING_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: cleanTitle,
+          estimated_minutes: estimatedMinutes === '' ? null : estimatedMinutes,
+        }),
+      })
+      setRecurringTasks((current) => [...current, recurringTask].sort((a, b) => a.title.localeCompare(b.title)))
+      if (selectedDate === today) {
+        request(`${API}?scheduled_date=${today}`).then(setTasks).catch((err) => setError(err.message))
+      }
+      setError('')
+      return true
+    } catch (err) {
+      setError(err.message)
+      return false
+    }
+  }
+
+  async function updateRecurringTask(id, title, estimatedMinutes) {
+    const cleanTitle = title.trim()
+    if (!cleanTitle) return false
+    try {
+      const updated = await request(`${RECURRING_API}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: cleanTitle,
+          estimated_minutes: estimatedMinutes === '' ? null : estimatedMinutes,
+        }),
+      })
+      setRecurringTasks((current) => current
+        .map((item) => (item.id === id ? updated : item))
+        .sort((a, b) => a.title.localeCompare(b.title)))
+      setError('')
+      return true
+    } catch (err) {
+      setError(err.message)
+      return false
+    }
+  }
+
+  async function deleteRecurringTask(id) {
+    try {
+      await request(`${RECURRING_API}/${id}`, { method: 'DELETE' })
+      setRecurringTasks((current) => current.filter((item) => item.id !== id))
       setError('')
     } catch (err) {
       setError(err.message)
@@ -187,7 +645,13 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(changes),
       })
-      setTasks((current) => current.map((task) => (task.id === id ? updated : task)))
+      setTasks((current) => current.map((task) => {
+        if (task.id === id) return updated
+        if (changes.completed === true && task.parent_task_id === id) {
+          return { ...task, completed: true, parent_task_id: null }
+        }
+        return task
+      }))
       setError('')
     } catch (err) {
       setError(err.message)
@@ -197,38 +661,101 @@ export default function App() {
   async function deleteTask(id) {
     try {
       await request(`${API}/${id}`, { method: 'DELETE' })
-      setTasks((current) => current.filter((task) => task.id !== id))
+      setTasks((current) => current
+        .filter((task) => task.id !== id)
+        .map((task) => task.parent_task_id === id ? { ...task, parent_task_id: null } : task))
       setError('')
     } catch (err) {
       setError(err.message)
     }
   }
 
-  async function clearCompleted() {
-    try {
-      await request(`${API}/completed`, { method: 'DELETE' })
-      setTasks((current) => current.filter((task) => !task.completed))
-      setError('')
-    } catch (err) {
-      setError(err.message)
-    }
-  }
-
-  async function reorderTasks(event) {
+  async function handleDragEnd(event) {
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    const armedParentId = nestingTargetRef.current
+    nestingTargetRef.current = null
+    setNestingTargetId(null)
+    dragModeRef.current = 'reorder'
+    setDragMode('reorder')
+    setLeavingParent(false)
+    setDraggedTask(null)
+    const activeTask = tasks.find((task) => task.id === active.id)
+    if (!activeTask) return
+    if (!over) {
+      if (activeTask.parent_task_id !== null) await moveTaskToParent(activeTask.id, null)
+      return
+    }
+    const overTask = tasks.find((task) => task.id === over.id)
 
-    const oldIndex = tasks.findIndex((task) => task.id === active.id)
-    const newIndex = tasks.findIndex((task) => task.id === over.id)
+    if (activeTask.parent_task_id === null && armedParentId !== null) {
+      await moveTaskToParent(activeTask.id, armedParentId)
+      return
+    }
+
+    if (activeTask.parent_task_id !== null) {
+      if (!overTask || overTask.parent_task_id !== activeTask.parent_task_id) {
+        await moveTaskToParent(activeTask.id, null)
+        return
+      }
+    }
+
+    const overId = String(over.id)
+    if (overId.startsWith('day:')) {
+      const targetDate = overId.slice(4)
+      if (targetDate === selectedDate) return
+      if (activeTask.recurring_task_id !== null) {
+        setError('Recurring tasks cannot be moved to another day')
+        return
+      }
+      const previous = tasks
+      setCollapsingTaskId(active.id)
+      const collapseTimer = window.setTimeout(() => {
+        setTasks((current) => current.filter((task) => task.id !== active.id))
+        setCollapsingTaskId(null)
+      }, 220)
+      try {
+        await request(`${API}/${active.id}/schedule`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduled_date: targetDate }),
+        })
+        setError('')
+      } catch (err) {
+        window.clearTimeout(collapseTimer)
+        setTasks(previous)
+        setCollapsingTaskId(null)
+        setError(err.message)
+      }
+      return
+    }
+
+    if (!overTask || active.id === over.id) return
+    if (overTask.parent_task_id !== activeTask.parent_task_id) return
+
+    const group = pendingTasks.filter(
+      (task) => task.parent_task_id === activeTask.parent_task_id,
+    )
+    const oldIndex = group.findIndex((task) => task.id === active.id)
+    const newIndex = group.findIndex((task) => task.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
     const previous = tasks
-    const reordered = arrayMove(tasks, oldIndex, newIndex)
+    const reorderedGroup = arrayMove(group, oldIndex, newIndex)
+    const groupIds = new Set(group.map((task) => task.id))
+    let groupPosition = 0
+    const reordered = tasks.map((task) => (
+      groupIds.has(task.id) ? reorderedGroup[groupPosition++] : task
+    ))
     setTasks(reordered)
 
     try {
       await request(`${API}/order`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_ids: reordered.map((task) => task.id) }),
+        body: JSON.stringify({
+          task_ids: reorderedGroup.map((task) => task.id),
+          scheduled_date: selectedDate,
+          parent_task_id: activeTask.parent_task_id,
+        }),
       })
       setError('')
     } catch (err) {
@@ -237,69 +764,317 @@ export default function App() {
     }
   }
 
-  const remaining = tasks.filter((task) => !task.completed).length
-  const completed = tasks.length - remaining
+  function handleDragOver({ active, over }) {
+    const activeTask = tasks.find((task) => task.id === active.id)
+    if (!activeTask || activeTask.parent_task_id !== null || dragModeRef.current !== 'nest') {
+      nestingTargetRef.current = null
+      setNestingTargetId(null)
+      return
+    }
+    const overTask = tasks.find((task) => task.id === over?.id)
+    const candidateId = overTask?.parent_task_id ?? overTask?.id ?? null
+    const candidate = tasks.find((task) => task.id === candidateId)
+    const hasChildren = tasks.some((task) => task.parent_task_id === active.id)
+    const validCandidate = candidateId !== null
+      && candidateId !== active.id
+      && candidateId !== activeTask?.parent_task_id
+      && candidate?.recurring_task_id === null
+      && !hasChildren
+
+    if (!validCandidate) {
+      nestingTargetRef.current = null
+      setNestingTargetId(null)
+      return
+    }
+    nestingTargetRef.current = candidateId
+    setNestingTargetId(candidateId)
+  }
+
+  function handleDragMove({ active, delta, over }) {
+    const activeTask = tasks.find((task) => task.id === active.id)
+    const activeTaskHasChildren = tasks.some((task) => task.parent_task_id === active.id)
+    if (activeTask && activeTask.parent_task_id !== null) {
+      const overTask = tasks.find((task) => task.id === over?.id)
+      setLeavingParent(overTask?.parent_task_id !== activeTask.parent_task_id)
+    } else {
+      setLeavingParent(false)
+    }
+    const nextMode = activeTask?.parent_task_id === null
+      && !activeTaskHasChildren
+      && delta.x > 48
+      ? 'nest'
+      : 'reorder'
+    if (nextMode === dragModeRef.current) return
+    dragModeRef.current = nextMode
+    setDragMode(nextMode)
+    nestingTargetRef.current = null
+    setNestingTargetId(null)
+  }
+
+  async function moveTaskToParent(taskId, parentTaskId) {
+    const previous = tasks
+    setTasks((current) => {
+      const task = current.find((item) => item.id === taskId)
+      if (!task) return current
+      return [
+        ...current.filter((item) => item.id !== taskId),
+        { ...task, parent_task_id: parentTaskId },
+      ]
+    })
+    try {
+      const updated = await request(`${API}/${taskId}/parent`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent_task_id: parentTaskId }),
+      })
+      setTasks((current) => current.map((task) => task.id === taskId ? updated : task))
+      setError('')
+    } catch (err) {
+      setTasks(previous)
+      setError(err.message)
+    }
+  }
+
+  const pendingTasks = tasks.filter((task) => !task.completed)
+  const completedTasks = tasks.filter((task) => task.completed)
+  const mainTasks = pendingTasks.filter((task) => task.parent_task_id === null)
+  const completed = completedTasks.length
 
   return (
     <Container maxWidth="sm" sx={{ py: { xs: 4, sm: 8 } }}>
+      {screen === 'settings' ? (
+        <Stack spacing={3}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <IconButton aria-label="Back to tasks" onClick={() => setScreen('tasks')}>
+              <ArrowBackRoundedIcon />
+            </IconButton>
+            <Typography variant="h2" sx={{ fontSize: { xs: 30, sm: 36 }, fontWeight: 750, letterSpacing: '-.035em' }}>
+              Settings
+            </Typography>
+          </Box>
+
+          <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, overflow: 'hidden' }}>
+            <Button
+              color="inherit"
+              fullWidth
+              onClick={onToggleMode}
+              sx={{ justifyContent: 'space-between', px: 2, py: 1.5, borderRadius: 0, textTransform: 'none' }}
+            >
+              Dark mode
+              {mode === 'dark' ? <LightModeRoundedIcon /> : <DarkModeRoundedIcon />}
+            </Button>
+          </Paper>
+
+          <SettingsSection
+            title="Suggestions"
+            expanded={settingsSection === 'suggestions'}
+            onToggle={() => setSettingsSection((current) => current === 'suggestions' ? null : 'suggestions')}
+          >
+            <TemplatesManager
+              emptyText="No suggestions yet."
+              suggestions={suggestions}
+              onAdd={addSuggestion}
+              onUpdate={updateSuggestion}
+              onDelete={deleteSuggestion}
+            />
+          </SettingsSection>
+
+          <SettingsSection
+            title="Recurring tasks"
+            expanded={settingsSection === 'recurring'}
+            onToggle={() => setSettingsSection((current) => current === 'recurring' ? null : 'recurring')}
+          >
+            <TemplatesManager
+              emptyText="No recurring tasks yet."
+              suggestions={recurringTasks}
+              onAdd={addRecurringTask}
+              onUpdate={updateRecurringTask}
+              onDelete={deleteRecurringTask}
+            />
+          </SettingsSection>
+        </Stack>
+      ) : (
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="overline" color="primary" sx={{ fontWeight: 800, letterSpacing: '.14em' }}>
-            My day
-          </Typography>
-          <Typography variant="h2" sx={{ fontSize: { xs: 40, sm: 52 }, fontWeight: 750, letterSpacing: '-.045em' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Typography variant="h2" sx={{ fontSize: { xs: 30, sm: 36 }, fontWeight: 750, letterSpacing: '-.035em' }}>
             Tasks
           </Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-            {remaining} {remaining === 1 ? 'task' : 'tasks'} remaining
-          </Typography>
+          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+            <IconButton
+              color="inherit"
+              onClick={() => setScreen('settings')}
+              aria-label="Open settings"
+            >
+              <SettingsRoundedIcon />
+            </IconButton>
+          </Stack>
         </Box>
 
-        <Paper component="form" onSubmit={addTask} elevation={0} sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, pl: 2, border: 1, borderColor: 'divider', borderRadius: 3 }}>
-          <AddRoundedIcon color="primary" />
-          <TextField
-            fullWidth
-            variant="standard"
-            placeholder="Add a task"
-            aria-label="New task title"
-            value={newTitle}
-            slotProps={{ input: { disableUnderline: true }, htmlInput: { maxLength: 300 } }}
-            onChange={(event) => setNewTitle(event.target.value)}
-          />
-          <Button type="submit" variant="contained" disableElevation disabled={!newTitle.trim()} sx={{ borderRadius: 2.25 }}>
-            Add
-          </Button>
-        </Paper>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={(args) => taskOrDayCollision(args, dragModeRef.current)}
+          onDragStart={({ active }) => {
+            dragModeRef.current = 'reorder'
+            setDragMode('reorder')
+            setDraggedTask(tasks.find((task) => task.id === active.id) ?? null)
+          }}
+          onDragMove={handleDragMove}
+          onDragOver={handleDragOver}
+          onDragCancel={() => {
+            nestingTargetRef.current = null
+            setNestingTargetId(null)
+            dragModeRef.current = 'reorder'
+            setDragMode('reorder')
+            setLeavingParent(false)
+            setDraggedTask(null)
+          }}
+          onDragEnd={handleDragEnd}
+        >
+          <Stack spacing={3}>
+            <Paper elevation={0} sx={{ display: 'flex', gap: 0.4, p: 0.4, border: 1, borderColor: 'divider', borderRadius: 2.5 }}>
+              {days.map((day) => (
+                <DayTab key={day.key} day={day} selected={day.key === selectedDate} onSelect={selectDate} />
+              ))}
+            </Paper>
 
-        {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+            <Paper component="form" onSubmit={addTask} elevation={0} sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, pl: 2, border: 1, borderColor: 'divider', borderRadius: 3 }}>
+              <Autocomplete
+                freeSolo
+                fullWidth
+                options={suggestions}
+                inputValue={newTitle}
+                getOptionLabel={(option) => typeof option === 'string' ? option : option.title}
+                filterOptions={(options, state) => {
+                  const prefix = state.inputValue.trim().toLocaleLowerCase()
+                  if (!prefix) return []
+                  return options.filter((option) => option.title.toLocaleLowerCase().startsWith(prefix))
+                }}
+                onInputChange={(_, value) => setNewTitle(value)}
+                onChange={(_, value) => {
+                  if (value && typeof value !== 'string') addTask(null, value)
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    variant="standard"
+                    placeholder="Add a task"
+                    aria-label="New task title"
+                    slotProps={{
+                      ...params.slotProps,
+                      input: { ...params.slotProps.input, disableUnderline: true },
+                      htmlInput: { ...params.slotProps.htmlInput, maxLength: 300 },
+                    }}
+                  />
+                )}
+              />
+              <Button
+                type="submit"
+                variant="contained"
+                disableElevation
+                disabled={!newTitle.trim()}
+                aria-label="Add task"
+                sx={{ minWidth: 44, px: 1.5, borderRadius: 2.25, fontSize: 22, lineHeight: 1 }}
+              >
+                +
+              </Button>
+            </Paper>
 
-        {loading ? (
-          <Box sx={{ display: 'grid', placeItems: 'center', py: 7 }}><CircularProgress size={30} /></Box>
-        ) : tasks.length === 0 ? (
-          <Stack alignItems="center" spacing={1.5} sx={{ py: 7, color: 'text.secondary' }}>
-            <CheckCircleRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
-            <Typography>Nothing to do yet.</Typography>
-          </Stack>
-        ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderTasks}>
-            <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+            {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+
+            {loading ? (
+              <Box sx={{ display: 'grid', placeItems: 'center', py: 7 }}><CircularProgress size={30} /></Box>
+            ) : pendingTasks.length === 0 ? (
+              <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary' }}>
+                <CheckCircleRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
+                <Typography>Nothing planned for this day.</Typography>
+              </Stack>
+            ) : (
+            <SortableContext items={mainTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
               <Paper elevation={0} sx={{ px: { xs: 0.5, sm: 2 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
                 <List disablePadding>
-                  {tasks.map((task) => (
-                    <TaskItem key={task.id} task={task} onUpdate={updateTask} onDelete={deleteTask} />
-                  ))}
+                  {mainTasks.map((task) => {
+                    const subtasks = pendingTasks.filter((item) => item.parent_task_id === task.id)
+                    return (
+                      <Box
+                        key={task.id}
+                        sx={{
+                          bgcolor: task.id === nestingTargetId ? 'action.selected' : 'transparent',
+                          borderRadius: 2,
+                          transition: 'background-color 120ms ease',
+                        }}
+                      >
+                        <TaskItem
+                          task={task}
+                          collapsing={task.id === collapsingTaskId}
+                          dragMode={dragMode}
+                          hideDivider={subtasks.length > 0}
+                          onUpdate={updateTask}
+                          onDelete={deleteTask}
+                        >
+                          {subtasks.length > 0 && (
+                            <SortableContext items={subtasks.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+                              <List disablePadding sx={{ ml: { xs: 4.5, sm: 6 }, pl: 1 }}>
+                                {subtasks.map((subtask) => (
+                                  <TaskItem
+                                    key={subtask.id}
+                                    task={subtask}
+                                    collapsing={subtask.id === collapsingTaskId}
+                                    dragMode={dragMode}
+                                    onUpdate={updateTask}
+                                    onDelete={deleteTask}
+                                  />
+                                ))}
+                              </List>
+                            </SortableContext>
+                          )}
+                        </TaskItem>
+                      </Box>
+                    )
+                  })}
                 </List>
               </Paper>
             </SortableContext>
-          </DndContext>
-        )}
+            )}
 
-        {completed > 0 && (
-          <Button color="inherit" onClick={clearCompleted} sx={{ alignSelf: 'flex-end', color: 'text.secondary' }}>
-            Clear completed ({completed})
-          </Button>
-        )}
+            {completed > 0 && (
+              <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, overflow: 'hidden' }}>
+                <Button
+                  color="inherit"
+                  fullWidth
+                  onClick={() => setCompletedOpen((current) => !current)}
+                  aria-expanded={completedOpen}
+                  sx={{ justifyContent: 'space-between', px: 2, py: 1.25, color: 'text.secondary' }}
+                >
+                  Completed ({completed})
+                  <ExpandMoreRoundedIcon
+                    sx={{ transform: completedOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 180ms ease' }}
+                  />
+                </Button>
+                <Collapse in={completedOpen}>
+                  <Box sx={{ px: { xs: 0.5, sm: 2 }, borderTop: 1, borderColor: 'divider' }}>
+                    <List disablePadding>
+                      {completedTasks.map((task) => (
+                        <TaskItem
+                          key={task.id}
+                          task={task}
+                          collapsing={false}
+                          onUpdate={updateTask}
+                          onDelete={deleteTask}
+                        />
+                      ))}
+                    </List>
+                  </Box>
+                </Collapse>
+              </Paper>
+            )}
+          </Stack>
+          <DragOverlay dropAnimation={null}>
+            <DraggedTask task={draggedTask} leavingParent={leavingParent} />
+          </DragOverlay>
+        </DndContext>
+
       </Stack>
+      )}
     </Container>
   )
 }

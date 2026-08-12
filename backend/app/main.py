@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+from datetime import date
+import sqlite3
 
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .database import get_connection, initialize_database
 
@@ -11,6 +13,8 @@ API_PREFIX = "/todo/api"
 
 class TaskCreate(BaseModel):
     title: str
+    scheduled_date: date | None = None
+    suggestion_id: int | None = None
 
     @field_validator("title")
     @classmethod
@@ -47,10 +51,64 @@ class Task(BaseModel):
     title: str
     completed: bool
     created_at: str
+    scheduled_date: date
+    estimated_minutes: int | None
+    recurring_task_id: int | None
+    parent_task_id: int | None
 
 
 class TaskOrder(BaseModel):
     task_ids: list[int]
+    scheduled_date: date
+    parent_task_id: int | None = None
+
+
+class TaskSchedule(BaseModel):
+    scheduled_date: date
+
+
+class TaskParent(BaseModel):
+    parent_task_id: int | None = None
+
+
+class SuggestionCreate(BaseModel):
+    title: str
+    estimated_minutes: int | None = Field(default=None, ge=1, le=120)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        return TaskCreate.validate_title(value)
+
+
+class SuggestionUpdate(SuggestionCreate):
+    pass
+
+
+class Suggestion(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    estimated_minutes: int | None
+    created_at: str
+
+
+class RecurringTaskCreate(SuggestionCreate):
+    pass
+
+
+class RecurringTaskUpdate(SuggestionCreate):
+    pass
+
+
+class RecurringTask(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    estimated_minutes: int | None
+    created_at: str
 
 
 @asynccontextmanager
@@ -68,10 +126,80 @@ app.add_middleware(
 )
 
 
+def carry_over_incomplete_tasks(connection) -> None:
+    today = date.today().isoformat()
+    overdue = connection.execute(
+        """
+        SELECT id FROM tasks
+        WHERE completed = 0 AND recurring_task_id IS NULL AND scheduled_date < ?
+        ORDER BY scheduled_date, sort_order, id
+        """,
+        (today,),
+    ).fetchall()
+    if not overdue:
+        return
+
+    next_order = connection.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks WHERE scheduled_date = ?",
+        (today,),
+    ).fetchone()[0]
+    connection.executemany(
+        """
+        UPDATE tasks SET scheduled_date = ?, sort_order = ?, parent_task_id = NULL
+        WHERE id = ?
+        """,
+        [(today, next_order + position, row[0]) for position, row in enumerate(overdue)],
+    )
+
+
+def create_today_recurring_tasks(connection) -> None:
+    today = date.today().isoformat()
+    templates = connection.execute(
+        """
+        SELECT id, title, estimated_minutes FROM recurring_tasks
+        WHERE NOT EXISTS (
+            SELECT 1 FROM tasks
+            WHERE tasks.recurring_task_id = recurring_tasks.id
+              AND tasks.scheduled_date = ?
+        )
+        ORDER BY id
+        """,
+        (today,),
+    ).fetchall()
+    if not templates:
+        return
+    next_order = connection.execute(
+        "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date = ?",
+        (today,),
+    ).fetchone()[0]
+    connection.executemany(
+        """
+        INSERT INTO tasks (
+            title, completed, sort_order, scheduled_date,
+            estimated_minutes, recurring_task_id
+        ) VALUES (?, 0, ?, ?, ?, ?)
+        """,
+        [
+            (
+                template["title"],
+                next_order - position,
+                today,
+                template["estimated_minutes"],
+                template["id"],
+            )
+            for position, template in enumerate(templates)
+        ],
+    )
+
+
 def fetch_task(task_id: int) -> Task:
     with get_connection() as connection:
         row = connection.execute(
-            "SELECT id, title, completed, created_at FROM tasks WHERE id = ?",
+            """
+            SELECT id, title, completed, created_at, scheduled_date,
+                   estimated_minutes, recurring_task_id, parent_task_id
+            FROM tasks WHERE id = ?
+            """,
             (task_id,),
         ).fetchone()
     if row is None:
@@ -84,28 +212,207 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get(f"{API_PREFIX}/tasks", response_model=list[Task])
-def list_tasks() -> list[Task]:
+@app.get(f"{API_PREFIX}/suggestions", response_model=list[Suggestion])
+def list_suggestions() -> list[Suggestion]:
     with get_connection() as connection:
         rows = connection.execute(
             """
-            SELECT id, title, completed, created_at
-            FROM tasks
-            ORDER BY sort_order ASC, id DESC
+            SELECT id, title, estimated_minutes, created_at
+            FROM suggestions ORDER BY title COLLATE NOCASE
             """
+        ).fetchall()
+    return [Suggestion(**dict(row)) for row in rows]
+
+
+@app.post(
+    f"{API_PREFIX}/suggestions",
+    response_model=Suggestion,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_suggestion(payload: SuggestionCreate) -> Suggestion:
+    try:
+        with get_connection() as connection:
+            cursor = connection.execute(
+                "INSERT INTO suggestions (title, estimated_minutes) VALUES (?, ?)",
+                (payload.title, payload.estimated_minutes),
+            )
+            suggestion_id = cursor.lastrowid
+            row = connection.execute(
+                """
+                SELECT id, title, estimated_minutes, created_at
+                FROM suggestions WHERE id = ?
+                """,
+                (suggestion_id,),
+            ).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Suggestion already exists") from error
+    return Suggestion(**dict(row))
+
+
+@app.patch(f"{API_PREFIX}/suggestions/{{suggestion_id}}", response_model=Suggestion)
+def update_suggestion(suggestion_id: int, payload: SuggestionUpdate) -> Suggestion:
+    try:
+        with get_connection() as connection:
+            cursor = connection.execute(
+                "UPDATE suggestions SET title = ?, estimated_minutes = ? WHERE id = ?",
+                (payload.title, payload.estimated_minutes, suggestion_id),
+            )
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Suggestion not found")
+            row = connection.execute(
+                """
+                SELECT id, title, estimated_minutes, created_at
+                FROM suggestions WHERE id = ?
+                """,
+                (suggestion_id,),
+            ).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Suggestion already exists") from error
+    return Suggestion(**dict(row))
+
+
+@app.delete(
+    f"{API_PREFIX}/suggestions/{{suggestion_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_suggestion(suggestion_id: int) -> Response:
+    with get_connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM suggestions WHERE id = ?", (suggestion_id,)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get(f"{API_PREFIX}/recurring-tasks", response_model=list[RecurringTask])
+def list_recurring_tasks() -> list[RecurringTask]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, title, estimated_minutes, created_at
+            FROM recurring_tasks ORDER BY title COLLATE NOCASE
+            """
+        ).fetchall()
+    return [RecurringTask(**dict(row)) for row in rows]
+
+
+@app.post(
+    f"{API_PREFIX}/recurring-tasks",
+    response_model=RecurringTask,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_recurring_task(payload: RecurringTaskCreate) -> RecurringTask:
+    try:
+        with get_connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO recurring_tasks (title, estimated_minutes)
+                VALUES (?, ?)
+                """,
+                (payload.title, payload.estimated_minutes),
+            )
+            recurring_task_id = cursor.lastrowid
+            row = connection.execute(
+                """
+                SELECT id, title, estimated_minutes, created_at
+                FROM recurring_tasks WHERE id = ?
+                """,
+                (recurring_task_id,),
+            ).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Recurring task already exists") from error
+    return RecurringTask(**dict(row))
+
+
+@app.patch(
+    f"{API_PREFIX}/recurring-tasks/{{recurring_task_id}}",
+    response_model=RecurringTask,
+)
+def update_recurring_task(
+    recurring_task_id: int, payload: RecurringTaskUpdate
+) -> RecurringTask:
+    try:
+        with get_connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE recurring_tasks SET title = ?, estimated_minutes = ? WHERE id = ?
+                """,
+                (payload.title, payload.estimated_minutes, recurring_task_id),
+            )
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Recurring task not found")
+            row = connection.execute(
+                """
+                SELECT id, title, estimated_minutes, created_at
+                FROM recurring_tasks WHERE id = ?
+                """,
+                (recurring_task_id,),
+            ).fetchone()
+    except sqlite3.IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Recurring task already exists") from error
+    return RecurringTask(**dict(row))
+
+
+@app.delete(
+    f"{API_PREFIX}/recurring-tasks/{{recurring_task_id}}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_recurring_task(recurring_task_id: int) -> Response:
+    with get_connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM recurring_tasks WHERE id = ?", (recurring_task_id,)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Recurring task not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get(f"{API_PREFIX}/tasks", response_model=list[Task])
+def list_tasks(scheduled_date: date | None = Query(default=None)) -> list[Task]:
+    requested_date = (scheduled_date or date.today()).isoformat()
+    with get_connection() as connection:
+        carry_over_incomplete_tasks(connection)
+        if requested_date == date.today().isoformat():
+            create_today_recurring_tasks(connection)
+        rows = connection.execute(
+            """
+            SELECT id, title, completed, created_at, scheduled_date,
+                   estimated_minutes, recurring_task_id, parent_task_id
+            FROM tasks
+            WHERE scheduled_date = ?
+            ORDER BY sort_order ASC, id DESC
+            """,
+            (requested_date,),
         ).fetchall()
     return [Task(**dict(row)) for row in rows]
 
 
 @app.post(f"{API_PREFIX}/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(payload: TaskCreate) -> Task:
+    scheduled_date = (payload.scheduled_date or date.today()).isoformat()
     with get_connection() as connection:
+        title = payload.title
+        estimated_minutes = None
+        if payload.suggestion_id is not None:
+            suggestion = connection.execute(
+                "SELECT title, estimated_minutes FROM suggestions WHERE id = ?",
+                (payload.suggestion_id,),
+            ).fetchone()
+            if suggestion is None:
+                raise HTTPException(status_code=404, detail="Suggestion not found")
+            title = suggestion["title"]
+            estimated_minutes = suggestion["estimated_minutes"]
         next_order = connection.execute(
-            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks"
+            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date = ?",
+            (scheduled_date,),
         ).fetchone()[0]
         cursor = connection.execute(
-            "INSERT INTO tasks (title, sort_order) VALUES (?, ?)",
-            (payload.title, next_order),
+            """
+            INSERT INTO tasks (title, sort_order, scheduled_date, estimated_minutes)
+            VALUES (?, ?, ?, ?)
+            """,
+            (title, next_order, scheduled_date, estimated_minutes),
         )
         task_id = cursor.lastrowid
     return fetch_task(task_id)
@@ -118,7 +425,14 @@ def reorder_tasks(payload: TaskOrder) -> Response:
 
     with get_connection() as connection:
         existing_ids = {
-            row[0] for row in connection.execute("SELECT id FROM tasks").fetchall()
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT id FROM tasks
+                WHERE scheduled_date = ? AND parent_task_id IS ? AND completed = 0
+                """,
+                (payload.scheduled_date.isoformat(), payload.parent_task_id),
+            ).fetchall()
         }
         if set(payload.task_ids) != existing_ids:
             raise HTTPException(status_code=400, detail="Task list is out of date")
@@ -129,11 +443,112 @@ def reorder_tasks(payload: TaskOrder) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.delete(f"{API_PREFIX}/tasks/completed", status_code=status.HTTP_204_NO_CONTENT)
-def delete_completed_tasks() -> Response:
+@app.put(f"{API_PREFIX}/tasks/{{task_id}}/parent", response_model=Task)
+def set_task_parent(task_id: int, payload: TaskParent) -> Task:
     with get_connection() as connection:
-        connection.execute("DELETE FROM tasks WHERE completed = 1")
+        task = connection.execute(
+            "SELECT id, scheduled_date FROM tasks WHERE id = ?", (task_id,)
+        ).fetchone()
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        if payload.parent_task_id is not None:
+            if payload.parent_task_id == task_id:
+                raise HTTPException(status_code=400, detail="A task cannot contain itself")
+            parent = connection.execute(
+                """
+                SELECT id, scheduled_date, parent_task_id, recurring_task_id
+                FROM tasks WHERE id = ?
+                """,
+                (payload.parent_task_id,),
+            ).fetchone()
+            if parent is None:
+                raise HTTPException(status_code=404, detail="Parent task not found")
+            if parent["scheduled_date"] != task["scheduled_date"]:
+                raise HTTPException(status_code=400, detail="Subtasks must be on the same day")
+            if parent["parent_task_id"] is not None:
+                raise HTTPException(status_code=400, detail="Only one subtask level is supported")
+            if parent["recurring_task_id"] is not None:
+                raise HTTPException(
+                    status_code=400, detail="Recurring tasks cannot have subtasks"
+                )
+            has_children = connection.execute(
+                "SELECT 1 FROM tasks WHERE parent_task_id = ? LIMIT 1", (task_id,)
+            ).fetchone()
+            if has_children is not None:
+                raise HTTPException(
+                    status_code=400, detail="A task with subtasks cannot become a subtask"
+                )
+
+        next_order = connection.execute(
+            """
+            SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks
+            WHERE scheduled_date = ? AND parent_task_id IS ?
+            """,
+            (task["scheduled_date"], payload.parent_task_id),
+        ).fetchone()[0]
+        connection.execute(
+            "UPDATE tasks SET parent_task_id = ?, sort_order = ? WHERE id = ?",
+            (payload.parent_task_id, next_order, task_id),
+        )
+    return fetch_task(task_id)
+
+
+@app.delete(f"{API_PREFIX}/tasks/completed", status_code=status.HTTP_204_NO_CONTENT)
+def delete_completed_tasks(scheduled_date: date | None = Query(default=None)) -> Response:
+    requested_date = (scheduled_date or date.today()).isoformat()
+    with get_connection() as connection:
+        connection.execute(
+            "DELETE FROM tasks WHERE completed = 1 AND scheduled_date = ?",
+            (requested_date,),
+        )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.put(f"{API_PREFIX}/tasks/{{task_id}}/schedule", response_model=Task)
+def schedule_task(task_id: int, payload: TaskSchedule) -> Task:
+    target_date = payload.scheduled_date.isoformat()
+    with get_connection() as connection:
+        task = connection.execute(
+            "SELECT recurring_task_id, parent_task_id FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if task["recurring_task_id"] is not None:
+            raise HTTPException(status_code=400, detail="Recurring tasks cannot be moved")
+        recurring_child = connection.execute(
+            """
+            SELECT 1 FROM tasks
+            WHERE parent_task_id = ? AND recurring_task_id IS NOT NULL
+            LIMIT 1
+            """,
+            (task_id,),
+        ).fetchone()
+        if recurring_child is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="A parent with recurring subtasks cannot be moved to another day",
+            )
+        next_order = connection.execute(
+            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date = ?",
+            (target_date,),
+        ).fetchone()[0]
+        cursor = connection.execute(
+            """
+            UPDATE tasks
+            SET scheduled_date = ?, sort_order = ?, parent_task_id = NULL
+            WHERE id = ?
+            """,
+            (target_date, next_order, task_id),
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Task not found")
+        connection.execute(
+            "UPDATE tasks SET scheduled_date = ? WHERE parent_task_id = ?",
+            (target_date, task_id),
+        )
+    return fetch_task(task_id)
 
 
 @app.patch(f"{API_PREFIX}/tasks/{{task_id}}", response_model=Task)
@@ -155,12 +570,24 @@ def update_task(task_id: int, payload: TaskUpdate) -> Task:
         )
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Task not found")
+        if updates.get("completed") is True:
+            connection.execute(
+                """
+                UPDATE tasks SET completed = 1, parent_task_id = NULL
+                WHERE parent_task_id = ?
+                """,
+                (task_id,),
+            )
     return fetch_task(task_id)
 
 
 @app.delete(f"{API_PREFIX}/tasks/{{task_id}}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: int) -> Response:
     with get_connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET parent_task_id = NULL WHERE parent_task_id = ?",
+            (task_id,),
+        )
         cursor = connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Task not found")
