@@ -1,0 +1,15 @@
+[Unit]
+Description=Back up the Pi Todo SQLite database
+
+[Service]
+Type=oneshot
+User=pi-todo
+Group=pi-todo
+ExecStart=/bin/bash /opt/pi-todo/app/deploy/backup/backup.sh
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/pi-todo
+ReadOnlyPaths=/var/lib/pi-todo
