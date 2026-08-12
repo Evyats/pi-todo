@@ -26,6 +26,12 @@ def initialize_database() -> None:
             )
             """
         )
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
+        }
+        if "sort_order" not in columns:
+            connection.execute("ALTER TABLE tasks ADD COLUMN sort_order INTEGER")
+            connection.execute("UPDATE tasks SET sort_order = -id")
 
 
 @contextmanager
@@ -37,4 +43,3 @@ def get_connection() -> Iterator[sqlite3.Connection]:
         connection.commit()
     finally:
         connection.close()
-
