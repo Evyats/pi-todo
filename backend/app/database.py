@@ -50,6 +50,13 @@ def initialize_database() -> None:
             connection.execute("ALTER TABLE tasks ADD COLUMN recurring_task_id INTEGER")
         if "parent_task_id" not in columns:
             connection.execute("ALTER TABLE tasks ADD COLUMN parent_task_id INTEGER")
+        if "is_divider" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE tasks ADD COLUMN is_divider INTEGER NOT NULL DEFAULT 0
+                CHECK(is_divider IN (0, 1))
+                """
+            )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS suggestions (

@@ -55,6 +55,7 @@ class Task(BaseModel):
     estimated_minutes: int | None
     recurring_task_id: int | None
     parent_task_id: int | None
+    is_divider: bool
 
 
 class TaskOrder(BaseModel):
@@ -69,6 +70,10 @@ class TaskSchedule(BaseModel):
 
 class TaskParent(BaseModel):
     parent_task_id: int | None = None
+
+
+class DividerCreate(BaseModel):
+    scheduled_date: date | None = None
 
 
 class SuggestionCreate(BaseModel):
@@ -131,7 +136,8 @@ def carry_over_incomplete_tasks(connection) -> None:
     overdue = connection.execute(
         """
         SELECT id FROM tasks
-        WHERE completed = 0 AND recurring_task_id IS NULL AND scheduled_date < ?
+        WHERE completed = 0 AND recurring_task_id IS NULL
+          AND is_divider = 0 AND scheduled_date < ?
         ORDER BY scheduled_date, sort_order, id
         """,
         (today,),
@@ -197,7 +203,7 @@ def fetch_task(task_id: int) -> Task:
         row = connection.execute(
             """
             SELECT id, title, completed, created_at, scheduled_date,
-                   estimated_minutes, recurring_task_id, parent_task_id
+                   estimated_minutes, recurring_task_id, parent_task_id, is_divider
             FROM tasks WHERE id = ?
             """,
             (task_id,),
@@ -378,7 +384,7 @@ def list_tasks(scheduled_date: date | None = Query(default=None)) -> list[Task]:
         rows = connection.execute(
             """
             SELECT id, title, completed, created_at, scheduled_date,
-                   estimated_minutes, recurring_task_id, parent_task_id
+                   estimated_minutes, recurring_task_id, parent_task_id, is_divider
             FROM tasks
             WHERE scheduled_date = ?
             ORDER BY sort_order ASC, id DESC
@@ -418,27 +424,53 @@ def create_task(payload: TaskCreate) -> Task:
     return fetch_task(task_id)
 
 
+@app.post(
+    f"{API_PREFIX}/tasks/divider",
+    response_model=Task,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_divider(payload: DividerCreate) -> Task:
+    scheduled_date = (payload.scheduled_date or date.today()).isoformat()
+    with get_connection() as connection:
+        next_order = connection.execute(
+            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date = ?",
+            (scheduled_date,),
+        ).fetchone()[0]
+        cursor = connection.execute(
+            """
+            INSERT INTO tasks (title, sort_order, scheduled_date, is_divider)
+            VALUES ('Divider', ?, ?, 1)
+            """,
+            (next_order, scheduled_date),
+        )
+        task_id = cursor.lastrowid
+    return fetch_task(task_id)
+
+
 @app.put(f"{API_PREFIX}/tasks/order", status_code=status.HTTP_204_NO_CONTENT)
 def reorder_tasks(payload: TaskOrder) -> Response:
     if len(payload.task_ids) != len(set(payload.task_ids)):
         raise HTTPException(status_code=400, detail="Task IDs must be unique")
 
     with get_connection() as connection:
-        existing_ids = {
-            row[0]
-            for row in connection.execute(
+        existing_rows = connection.execute(
                 """
                 SELECT id FROM tasks
                 WHERE scheduled_date = ? AND parent_task_id IS ? AND completed = 0
+                ORDER BY sort_order, id
                 """,
                 (payload.scheduled_date.isoformat(), payload.parent_task_id),
             ).fetchall()
-        }
-        if set(payload.task_ids) != existing_ids:
+        existing_ids = [row[0] for row in existing_rows]
+        if not set(payload.task_ids).issubset(existing_ids):
             raise HTTPException(status_code=400, detail="Task list is out of date")
+        submitted_ids = set(payload.task_ids)
+        final_order = payload.task_ids + [
+            task_id for task_id in existing_ids if task_id not in submitted_ids
+        ]
         connection.executemany(
             "UPDATE tasks SET sort_order = ? WHERE id = ?",
-            [(position, task_id) for position, task_id in enumerate(payload.task_ids)],
+            [(position, task_id) for position, task_id in enumerate(final_order)],
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -447,17 +479,19 @@ def reorder_tasks(payload: TaskOrder) -> Response:
 def set_task_parent(task_id: int, payload: TaskParent) -> Task:
     with get_connection() as connection:
         task = connection.execute(
-            "SELECT id, scheduled_date FROM tasks WHERE id = ?", (task_id,)
+            "SELECT id, scheduled_date, is_divider FROM tasks WHERE id = ?", (task_id,)
         ).fetchone()
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
+        if task["is_divider"]:
+            raise HTTPException(status_code=400, detail="Dividers cannot become subtasks")
 
         if payload.parent_task_id is not None:
             if payload.parent_task_id == task_id:
                 raise HTTPException(status_code=400, detail="A task cannot contain itself")
             parent = connection.execute(
                 """
-                SELECT id, scheduled_date, parent_task_id, recurring_task_id
+                SELECT id, scheduled_date, parent_task_id, recurring_task_id, is_divider
                 FROM tasks WHERE id = ?
                 """,
                 (payload.parent_task_id,),
@@ -472,6 +506,8 @@ def set_task_parent(task_id: int, payload: TaskParent) -> Task:
                 raise HTTPException(
                     status_code=400, detail="Recurring tasks cannot have subtasks"
                 )
+            if parent["is_divider"]:
+                raise HTTPException(status_code=400, detail="Dividers cannot have subtasks")
             has_children = connection.execute(
                 "SELECT 1 FROM tasks WHERE parent_task_id = ? LIMIT 1", (task_id,)
             ).fetchone()
@@ -510,13 +546,18 @@ def schedule_task(task_id: int, payload: TaskSchedule) -> Task:
     target_date = payload.scheduled_date.isoformat()
     with get_connection() as connection:
         task = connection.execute(
-            "SELECT recurring_task_id, parent_task_id FROM tasks WHERE id = ?",
+            """
+            SELECT recurring_task_id, parent_task_id, is_divider
+            FROM tasks WHERE id = ?
+            """,
             (task_id,),
         ).fetchone()
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
         if task["recurring_task_id"] is not None:
             raise HTTPException(status_code=400, detail="Recurring tasks cannot be moved")
+        if task["is_divider"]:
+            raise HTTPException(status_code=400, detail="Dividers cannot be moved to another day")
         recurring_child = connection.execute(
             """
             SELECT 1 FROM tasks

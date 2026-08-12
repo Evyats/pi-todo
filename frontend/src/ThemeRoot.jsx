@@ -17,7 +17,7 @@ export default function ThemeRoot() {
         ? { default: '#101318', paper: '#191d24' }
         : { default: '#f7f8fc', paper: '#ffffff' },
     },
-    shape: { borderRadius: 12 },
+    shape: { borderRadius: 6 },
     typography: {
       fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       button: { fontWeight: 700 },
