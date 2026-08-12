@@ -101,6 +101,13 @@ def create_task(payload: TaskCreate) -> Task:
     return fetch_task(task_id)
 
 
+@app.delete("/api/tasks/completed", status_code=status.HTTP_204_NO_CONTENT)
+def delete_completed_tasks() -> Response:
+    with get_connection() as connection:
+        connection.execute("DELETE FROM tasks WHERE completed = 1")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.patch("/api/tasks/{task_id}", response_model=Task)
 def update_task(task_id: int, payload: TaskUpdate) -> Task:
     updates = payload.model_dump(exclude_unset=True)
@@ -130,4 +137,3 @@ def delete_task(task_id: int) -> Response:
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Task not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

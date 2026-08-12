@@ -111,7 +111,18 @@ export default function App() {
     }
   }
 
+  async function clearCompleted() {
+    try {
+      await request(`${API}/completed`, { method: 'DELETE' })
+      setTasks((current) => current.filter((task) => !task.completed))
+      setError('')
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
   const remaining = tasks.filter((task) => !task.completed).length
+  const completed = tasks.length - remaining
 
   return (
     <main className="app">
@@ -142,13 +153,19 @@ export default function App() {
           <p>Nothing to do yet.</p>
         </div>
       ) : (
-        <ul className="task-list">
-          {tasks.map((task) => (
-            <TaskItem key={task.id} task={task} onUpdate={updateTask} onDelete={deleteTask} />
-          ))}
-        </ul>
+        <>
+          <ul className="task-list">
+            {tasks.map((task) => (
+              <TaskItem key={task.id} task={task} onUpdate={updateTask} onDelete={deleteTask} />
+            ))}
+          </ul>
+          {completed > 0 && (
+            <button className="clear-completed" onClick={clearCompleted}>
+              Clear completed ({completed})
+            </button>
+          )}
+        </>
       )}
     </main>
   )
 }
-
