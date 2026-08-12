@@ -66,6 +66,29 @@ class TaskUpdateTests(unittest.TestCase):
 
         self.assertEqual([task.title for task in tasks], ["First", "Second"])
 
+    def test_restored_task_is_last_in_pending_list(self) -> None:
+        today = date.today().isoformat()
+        with get_connection() as connection:
+            connection.executemany(
+                """
+                INSERT INTO tasks (title, completed, sort_order, scheduled_date)
+                VALUES (?, ?, ?, ?)
+                """,
+                [
+                    ("First pending", 0, 0, today),
+                    ("Second pending", 0, 1, today),
+                    ("Restore me", 1, -1, today),
+                ],
+            )
+            task_id = connection.execute(
+                "SELECT id FROM tasks WHERE title = 'Restore me'"
+            ).fetchone()["id"]
+
+        update_task(task_id, TaskUpdate(completed=False))
+
+        pending = [task.title for task in list_tasks(date.today()) if not task.completed]
+        self.assertEqual(pending, ["First pending", "Second pending", "Restore me"])
+
 
 if __name__ == "__main__":
     unittest.main()
