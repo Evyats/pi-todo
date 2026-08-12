@@ -110,10 +110,11 @@ function CompletionEffect() {
 }
 
 
-function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false, children, soundEnabled, soundStyle, onUpdate, onDelete }) {
+function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false, preview = false, children, soundEnabled, soundStyle, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(task.title)
   const [celebrating, setCelebrating] = useState(false)
+  const titleEditable = !task.completed && task.recurring_task_id === null
   const {
     attributes,
     listeners,
@@ -124,7 +125,7 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
     isDragging,
   } = useSortable({
     id: task.id,
-    disabled: task.completed,
+    disabled: task.completed || preview,
     data: { task },
   })
 
@@ -166,6 +167,8 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
         }}
       >
         <ListItem disableGutters sx={{ minHeight: 40, gap: { xs: 0.5, sm: 1.25 }, py: 0 }}>
+          <Box aria-hidden sx={{ width: 40, height: 40, flexShrink: 0 }} />
+          <Box sx={{ flex: 1, borderTop: 1, borderColor: 'divider' }} />
           <IconButton
             ref={setActivatorNodeRef}
             data-no-day-swipe
@@ -176,8 +179,6 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
           >
             <DragIndicatorRoundedIcon />
           </IconButton>
-          <Box sx={{ flex: 1, borderTop: 1, borderColor: 'divider' }} />
-          <Box aria-hidden sx={{ width: 40, height: 40, flexShrink: 0 }} />
         </ListItem>
       </Box>
     )
@@ -211,37 +212,16 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
         '&:last-child': { borderBottom: 'none' },
       }}
     >
-      <IconButton
-        ref={setActivatorNodeRef}
-        data-no-day-swipe
-        aria-label={`Move ${task.title}`}
-        disabled={task.completed}
-        {...attributes}
-        {...listeners}
-        sx={{ color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
-      >
-        {task.recurring_task_id === null ? <DragIndicatorRoundedIcon /> : <RepeatRoundedIcon />}
-      </IconButton>
-
-      <Box sx={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
-        {celebrating && (
-          <CompletionEffect />
-        )}
-        <IconButton
-          color={task.completed || celebrating ? 'success' : 'default'}
-          aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
-          disabled={celebrating}
-          onClick={toggleCompleted}
-          sx={{
-            animation: celebrating ? `${checkBounce} 340ms ease-out` : 'none',
-          }}
-        >
-          {task.completed || celebrating ? <CheckCircleRoundedIcon /> : <RadioButtonUncheckedRoundedIcon />}
+      {task.completed && task.recurring_task_id === null ? (
+        <IconButton color="error" aria-label={`Delete ${task.title}`} onClick={() => onDelete(task.id)}>
+          <DeleteOutlineRoundedIcon />
         </IconButton>
-      </Box>
+      ) : (
+        <Box aria-hidden sx={{ width: 40, height: 40, flexShrink: 0 }} />
+      )}
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
-      {editing ? (
+      {editing && titleEditable ? (
         <Box component="form" onSubmit={save}>
           <TextField
             autoFocus
@@ -255,7 +235,7 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
             onKeyDown={(event) => event.key === 'Escape' && cancel()}
           />
         </Box>
-      ) : (
+      ) : titleEditable ? (
         <Button
           color="inherit"
           onClick={() => setEditing(true)}
@@ -274,6 +254,22 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
         >
           {task.title}
         </Button>
+      ) : (
+        <Typography
+          component="div"
+          sx={{
+            width: '100%',
+            px: 0.5,
+            py: 0.7,
+            overflowWrap: 'anywhere',
+            color: task.completed ? 'text.disabled' : 'text.primary',
+            fontWeight: 400,
+            textAlign: 'left',
+            textDecoration: task.completed ? 'line-through' : 'none',
+          }}
+        >
+          {task.title}
+        </Typography>
       )}
       {task.estimated_minutes && (
         <Box sx={{ px: 0.5, pb: 0.5 }}>
@@ -287,14 +283,30 @@ function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false,
       )}
       </Box>
 
-      {task.completed && task.recurring_task_id === null && (
-        <IconButton color="error" aria-label={`Delete ${task.title}`} onClick={() => onDelete(task.id)}>
-          <DeleteOutlineRoundedIcon />
+      <Box sx={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
+        {celebrating && <CompletionEffect />}
+        <IconButton
+          color={task.completed || celebrating ? 'success' : 'default'}
+          aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
+          disabled={celebrating}
+          onClick={toggleCompleted}
+          sx={{ animation: celebrating ? `${checkBounce} 340ms ease-out` : 'none' }}
+        >
+          {task.completed || celebrating ? <CheckCircleRoundedIcon /> : <RadioButtonUncheckedRoundedIcon />}
         </IconButton>
-      )}
-      {(!task.completed || task.recurring_task_id !== null) && (
-        <Box aria-hidden sx={{ width: 40, height: 40, flexShrink: 0 }} />
-      )}
+      </Box>
+
+      <IconButton
+        ref={setActivatorNodeRef}
+        data-no-day-swipe
+        aria-label={`Move ${task.title}`}
+        disabled={task.completed}
+        {...attributes}
+        {...listeners}
+        sx={{ color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+      >
+        {task.recurring_task_id === null ? <DragIndicatorRoundedIcon /> : <RepeatRoundedIcon />}
+      </IconButton>
     </ListItem>
     {children}
     </Box>
@@ -380,6 +392,81 @@ function DraggedTask({ task, leavingParent = false, removingDivider = false }) {
         </Typography>
       )}
     </Paper>
+  )
+}
+
+function DayPreview({ tasks, completedOpen, onOpenCompleted }) {
+  const pending = tasks.filter((task) => !task.completed)
+  const main = pending.filter((task) => task.parent_task_id === null)
+  const completed = tasks.filter((task) => task.completed)
+  const ignore = async () => {}
+  return (
+    <Stack spacing={3} sx={{ px: 0.5, pointerEvents: 'none' }}>
+      {pending.length === 0 ? (
+        <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary' }}>
+          <CheckCircleRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
+          <Typography>Nothing planned for this day.</Typography>
+        </Stack>
+      ) : (
+        <Paper elevation={0} sx={{ px: { xs: 0.5, sm: 2 }, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+          <List disablePadding>
+            {main.map((task) => {
+              const subtasks = pending.filter((item) => item.parent_task_id === task.id)
+              return (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  collapsing={false}
+                  preview
+                  hideDivider={subtasks.length > 0}
+                  soundEnabled={false}
+                  onUpdate={ignore}
+                  onDelete={ignore}
+                >
+                  {subtasks.length > 0 && (
+                    <List disablePadding sx={{ mr: { xs: 4.5, sm: 6 }, pr: 1 }}>
+                      {subtasks.map((subtask) => (
+                        <TaskItem
+                          key={subtask.id}
+                          task={subtask}
+                          collapsing={false}
+                          preview
+                          soundEnabled={false}
+                          onUpdate={ignore}
+                          onDelete={ignore}
+                        />
+                      ))}
+                    </List>
+                  )}
+                </TaskItem>
+              )
+            })}
+          </List>
+        </Paper>
+      )}
+      {completed.length > 0 && (
+        <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+          <Button
+            color="inherit"
+            fullWidth
+            onClick={onOpenCompleted}
+            sx={{ justifyContent: 'space-between', px: 2, py: 1.25, color: 'text.secondary', pointerEvents: 'auto' }}
+          >
+            Completed ({completed.length})
+            <ExpandMoreRoundedIcon sx={{ transform: completedOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 180ms ease' }} />
+          </Button>
+          <Collapse in={completedOpen}>
+            <Box sx={{ px: { xs: 0.5, sm: 2 }, borderTop: 1, borderColor: 'divider' }}>
+              <List disablePadding>
+                {completed.map((task) => (
+                  <TaskItem key={task.id} task={task} collapsing={false} preview soundEnabled={false} onUpdate={ignore} onDelete={ignore} />
+                ))}
+              </List>
+            </Box>
+          </Collapse>
+        </Paper>
+      )}
+    </Stack>
   )
 }
 
@@ -518,7 +605,7 @@ function SettingsSection({ title, expanded, onToggle, divider = true, children }
 export default function App({ mode, onToggleMode }) {
   const [today, setToday] = useState(() => dateKey())
   const [selectedDate, setSelectedDate] = useState(() => dateKey())
-  const [tasks, setTasks] = useState([])
+  const [tasksByDate, setTasksByDate] = useState({})
   const [newTitle, setNewTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -552,6 +639,14 @@ export default function App({ mode, onToggleMode }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
   const days = useMemo(() => upcomingDays(today), [today])
+  const tasks = tasksByDate[selectedDate] ?? []
+  function setTasks(value) {
+    setTasksByDate((current) => {
+      const currentDay = current[selectedDate] ?? []
+      const nextDay = typeof value === 'function' ? value(currentDay) : value
+      return { ...current, [selectedDate]: nextDay }
+    })
+  }
   const suggestionsStore = useTemplates(SUGGESTIONS_API, setError)
   const recurringStore = useTemplates(RECURRING_API, setError, () => {
     if (selectedDate === today) {
@@ -574,11 +669,17 @@ export default function App({ mode, onToggleMode }) {
   }, [today])
 
   useEffect(() => {
-    request(`${API}?scheduled_date=${selectedDate}`)
-      .then(setTasks)
+    const startDate = days[0].key
+    const endDate = days[days.length - 1].key
+    request(`${API}?start_date=${startDate}&end_date=${endDate}`)
+      .then((loadedTasks) => {
+        const grouped = Object.fromEntries(days.map((day) => [day.key, []]))
+        loadedTasks.forEach((task) => grouped[task.scheduled_date]?.push(task))
+        setTasksByDate(grouped)
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
-  }, [selectedDate])
+  }, [days])
 
   useEffect(() => {
     if (!taskComposerOpen) return undefined
@@ -597,9 +698,12 @@ export default function App({ mode, onToggleMode }) {
 
   function selectDate(value) {
     if (value === selectedDate) return
-    setLoading(true)
-    setCompletedOpen(false)
     setSelectedDate(value)
+  }
+
+  function openCompletedForDate(value) {
+    setSelectedDate(value)
+    setCompletedOpen(true)
   }
 
   const {
@@ -608,7 +712,12 @@ export default function App({ mode, onToggleMode }) {
     animating: swipeAnimating,
     pagerRef: swipePagerRef,
     pointerHandlers: daySwipeHandlers,
-  } = useDaySwipe({ days, selectedDate, onSelectDate: selectDate })
+  } = useDaySwipe({
+    days,
+    selectedDate,
+    onSelectDate: selectDate,
+    onBeforeSelect: () => setCompletedOpen(false),
+  })
 
   function openSettings() {
     window.history.pushState({ ...window.history.state, todoScreen: 'settings' }, '')
@@ -679,13 +788,19 @@ export default function App({ mode, onToggleMode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(changes),
       })
-      setTasks((current) => current.map((task) => {
-        if (task.id === id) return updated
-        if (changes.completed === true && task.parent_task_id === id) {
-          return { ...task, completed: true, parent_task_id: null }
+      setTasks((current) => {
+        if (changes.completed !== true) {
+          return current.map((task) => task.id === id ? updated : task)
         }
-        return task
-      }))
+        const remaining = current
+          .filter((task) => task.id !== id)
+          .map((task) => (
+            task.parent_task_id === id
+              ? { ...task, completed: true, parent_task_id: null }
+              : task
+          ))
+        return [updated, ...remaining]
+      })
       setError('')
     } catch (err) {
       setError(err.message)
@@ -740,17 +855,30 @@ export default function App({ mode, onToggleMode }) {
         return
       }
       const previous = tasksBeforeDrag || tasks
+      const movedFamily = previous.filter(
+        (task) => task.id === active.id || task.parent_task_id === active.id,
+      )
+      const movedIds = new Set(movedFamily.map((task) => task.id))
       setCollapsingTaskId(active.id)
       const collapseTimer = window.setTimeout(() => {
-        setTasks((current) => current.filter((task) => task.id !== active.id))
+        setTasks((current) => current.filter((task) => !movedIds.has(task.id)))
         setCollapsingTaskId(null)
       }, 220)
       try {
-        await request(`${API}/${active.id}/schedule`, {
+        const updatedParent = await request(`${API}/${active.id}/schedule`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ scheduled_date: targetDate }),
         })
+        const movedTasks = movedFamily.map((task) => (
+          task.id === active.id
+            ? updatedParent
+            : { ...task, scheduled_date: targetDate }
+        ))
+        setTasksByDate((current) => ({
+          ...current,
+          [targetDate]: [...movedTasks, ...(current[targetDate] ?? [])],
+        }))
         setCelebratingDay(targetDate)
         window.setTimeout(() => setCelebratingDay(null), 340)
         setError('')
@@ -945,6 +1073,8 @@ export default function App({ mode, onToggleMode }) {
   const mainTasks = pendingTasks.filter((task) => task.parent_task_id === null)
   const completed = completedTasks.length
   const selectedDayIndex = days.findIndex((day) => day.key === selectedDate)
+  const previousDate = days[selectedDayIndex - 1]?.key ?? null
+  const nextDate = days[selectedDayIndex + 1]?.key ?? null
   const indicatorPosition = Math.max(
     0,
     Math.min(days.length - 1, selectedDayIndex - (swipeX / pagerWidth)),
@@ -1139,7 +1269,10 @@ export default function App({ mode, onToggleMode }) {
                   day={day}
                   selected={Math.round(indicatorPosition) === index}
                   celebrating={celebratingDay === day.key}
-                  onSelect={selectDate}
+                  onSelect={(value) => {
+                    setCompletedOpen(false)
+                    selectDate(value)
+                  }}
                 />
               ))}
             </Paper>
@@ -1149,17 +1282,32 @@ export default function App({ mode, onToggleMode }) {
               {...daySwipeHandlers}
               sx={{
                 touchAction: 'pan-y',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 3,
+                overflow: 'hidden',
                 minHeight: {
                   xs: 'calc(100dvh - 204px)',
                   sm: 'calc(100dvh - 268px)',
                 },
-                transform: `translateX(${swipeX}px)`,
+              }}
+            >
+            <Box
+              sx={{
+                display: 'flex',
+                width: '300%',
+                alignItems: 'flex-start',
+                transform: `translateX(calc(-33.333333% + ${swipeX}px))`,
                 transition: swipeAnimating ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
               }}
             >
+            <Box sx={{ width: '33.333333%', flexShrink: 0 }}>
+              {previousDate && (
+                <DayPreview
+                  tasks={tasksByDate[previousDate] ?? []}
+                  completedOpen={false}
+                  onOpenCompleted={() => openCompletedForDate(previousDate)}
+                />
+              )}
+            </Box>
+            <Box sx={{ display: 'flex', width: '33.333333%', flexShrink: 0, flexDirection: 'column', gap: 3, px: 0.5 }}>
             {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
 
             {loading ? (
@@ -1196,7 +1344,7 @@ export default function App({ mode, onToggleMode }) {
                         >
                           {subtasks.length > 0 && (
                             <SortableContext items={subtasks.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-                              <List disablePadding sx={{ ml: { xs: 4.5, sm: 6 }, pl: 1 }}>
+                              <List disablePadding sx={{ mr: { xs: 4.5, sm: 6 }, pr: 1 }}>
                                 {subtasks.map((subtask) => (
                                   <TaskItem
                                     key={subtask.id}
@@ -1254,6 +1402,17 @@ export default function App({ mode, onToggleMode }) {
                 </Collapse>
               </Paper>
             )}
+            </Box>
+            <Box sx={{ width: '33.333333%', flexShrink: 0 }}>
+              {nextDate && (
+                <DayPreview
+                  tasks={tasksByDate[nextDate] ?? []}
+                  completedOpen={false}
+                  onOpenCompleted={() => openCompletedForDate(nextDate)}
+                />
+              )}
+            </Box>
+            </Box>
             </Box>
           </Stack>
           <DragOverlay dropAnimation={null}>

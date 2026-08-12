@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 
 const ANIMATION_MS = 120
 
-export function useDaySwipe({ days, selectedDate, onSelectDate }) {
+export function useDaySwipe({ days, selectedDate, onSelectDate, onBeforeSelect }) {
   const [offset, setOffset] = useState(0)
   const [pagerWidth, setPagerWidth] = useState(1)
   const [animating, setAnimating] = useState(false)
@@ -62,6 +62,7 @@ export function useDaySwipe({ days, selectedDate, onSelectDate }) {
 
     setAnimating(true)
     if (shouldChange) {
+      onBeforeSelect?.()
       const targetOffset = direction === 1 ? -width : width
       setOffset(targetOffset)
       offsetRef.current = targetOffset
