@@ -34,10 +34,8 @@ ignored by Git so deployments cannot overwrite your tasks.
 
 ## Deploy to the Raspberry Pi
 
-Every push to `main` runs GitHub Actions, checks and builds the frontend, and
-publishes a ready-to-run `deploy` branch containing `frontend/dist`.
-
-After the workflow succeeds, deploy manually on the Pi:
+Push changes to `main`, then check [GitHub Actions](https://github.com/Evyats/pi-todo/actions).
+Wait for **Build deploy branch** to turn green, then run on the Pi:
 
 ```bash
 sudo /opt/pi-todo/app/deploy.sh
