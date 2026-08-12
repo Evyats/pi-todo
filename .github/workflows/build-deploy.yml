@@ -51,7 +51,7 @@ jobs:
           mv frontend/dist "${RUNNER_TEMP}/frontend-dist"
           git switch --create deploy --track origin/deploy
           git merge --no-edit "${SOURCE_SHA}"
-          git rm --recursive frontend/dist
+          git rm -r frontend/dist
           mv "${RUNNER_TEMP}/frontend-dist" frontend/dist
           git add --force frontend/dist
           if ! git diff --cached --quiet; then
