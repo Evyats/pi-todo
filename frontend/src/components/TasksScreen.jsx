@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
-import HorizontalRuleRoundedIcon from '@mui/icons-material/HorizontalRuleRounded'
-import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -20,6 +19,7 @@ import Typography from '@mui/material/Typography'
 import { taskOrDayCollision } from '../drag/collisionDetection'
 import { DayTab, DraggedTask, StaticDayPanel } from './DayComponents'
 import { TaskItem } from './TaskItem'
+import { InlineTaskComposer } from './InlineTaskComposer'
 import { playCompletionSound } from '../completionSound'
 
 const COMPLETION_DURATION = 340
@@ -41,14 +41,15 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
     handleDragOver, handleDragEnd, nestingTargetRef, setNestingTargetId,
     removingDividerRef, setRemovingDivider, setLeavingParent, mainListRef,
     nestingTargetId, collapsingTaskId, dragMode, draggedTask, leavingParent,
-    removingDivider,
+    removingDivider, leavingParentDirectionRef,
   } = drag
-  const { updateTask, deleteTask, updateSelectedDayTasks, openSettings, addDivider, openTaskComposer } = actions
+  const { updateTask, deleteTask, updateSelectedDayTasks, openSettings, addDivider, openTaskDraft, addTask, cancelTaskDraft } = actions
   const {
     error, setError, loading, completedOpen, setCompletedOpen,
-    completionSound, completionSoundStyle,
+    completionSound, completionSoundStyle, taskDraftOpen, newTitle, setNewTitle, suggestions,
   } = ui
   const completed = completedTasks.length
+  const remaining = pendingTasks.filter((task) => !task.is_divider).length
 
   async function completeTask(task) {
     const family = [task, ...(childrenByParent.get(task.id) ?? [])]
@@ -66,25 +67,31 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   }
   return (
       <Stack spacing={3}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-          <Typography
-            variant="h2"
-            sx={{
-              fontFamily: '"Space Grotesk", sans-serif',
-              fontSize: { xs: 31, sm: 38 },
-              fontWeight: 800,
-              letterSpacing: '-.045em',
-            }}
-          >
-            Tasks
-          </Typography>
-          <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 64 }}>
+          <Stack spacing={0.4} sx={{ alignItems: 'center' }}>
+            <Typography
+              variant="h2"
+              sx={{
+                fontFamily: '"Space Grotesk", sans-serif',
+                fontSize: { xs: 23, sm: 27 },
+                fontWeight: 800,
+                letterSpacing: '-.045em',
+              }}
+            >
+              Tasks
+            </Typography>
+            <Typography sx={{ color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400 }}>
+              {remaining} remaining&nbsp; · &nbsp;{completed} completed
+            </Typography>
+          </Stack>
+          <Stack direction="row" spacing={0.5} sx={{ position: 'absolute', right: 0, alignItems: 'center' }}>
             <IconButton
               color="inherit"
               onClick={openSettings}
               aria-label="Open settings"
+              sx={{ width: 34, height: 34, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}
             >
-              <SettingsRoundedIcon />
+              <SettingsOutlinedIcon />
             </IconButton>
           </Stack>
         </Box>
@@ -114,6 +121,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
             setLeavingParent(false)
             removingDividerRef.current = false
             setRemovingDivider(false)
+            leavingParentDirectionRef.current = null
             boundaryPositionRef.current = null
             if (dragStartTasksRef.current) updateSelectedDayTasks(dragStartTasksRef.current)
             dragStartTasksRef.current = null
@@ -122,28 +130,35 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           onDragEnd={handleDragEnd}
         >
           <Stack spacing={3}>
-            <Paper elevation={0} sx={{ position: 'relative', display: 'flex', gap: 0.4, p: 0.4, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+            <Box sx={{ position: 'relative', display: 'flex', minHeight: { xs: 48, sm: 52 } }}>
               <Box
                 sx={{
                   position: 'absolute',
-                  top: 3,
-                  bottom: 3,
-                  left: 3,
-                  width: 'calc((100% - 6px) / 5)',
-                  borderRadius: 2,
-                  bgcolor: 'primary.main',
+                  inset: 0,
+                  width: '20%',
                   transform: `translateX(${indicatorPosition * 100}%)`,
                   transition: swipeAnimating ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
                 }}
-              />
+              >
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    inset: { xs: '0 14px', sm: '0 18px' },
+                    borderRadius: { xs: 2.75, sm: 3 },
+                    bgcolor: 'primary.main',
+                    backgroundImage: 'linear-gradient(145deg, #4b88ff, #225eff)',
+                    boxShadow: '0 10px 28px rgba(35, 99, 255, .28)',
+                  }}
+                />
+              </Box>
               {weekStartIndex > 0 && (
                 <Box
                   aria-hidden
                   sx={{
                     position: 'absolute',
                     zIndex: 2,
-                    top: 7,
-                    bottom: 7,
+                    top: 15,
+                    bottom: 15,
                     left: `calc(${weekStartIndex * 20}% - 1px)`,
                     width: 2,
                     borderRadius: 1,
@@ -164,7 +179,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                   }}
                 />
               ))}
-            </Paper>
+            </Box>
 
             <Box
               ref={swipePagerRef}
@@ -201,20 +216,31 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
 
             {loading ? (
               <Box sx={{ display: 'grid', placeItems: 'center', py: 7 }}><CircularProgress size={30} /></Box>
-            ) : pendingTasks.length === 0 ? (
+            ) : pendingTasks.length === 0 && !taskDraftOpen ? (
               <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary' }}>
-                <CheckCircleRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
+                <CheckCircleOutlineRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
                 <Typography>Nothing planned for this day.</Typography>
               </Stack>
             ) : (
             <SortableContext items={mainTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-              <Paper ref={mainListRef} elevation={0} sx={{ px: { xs: 0.5, sm: 2 }, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+              <Box ref={mainListRef} sx={{ px: { xs: 0.5, sm: 1 }, bgcolor: 'transparent' }}>
                 <List disablePadding>
+                  {taskDraftOpen && (
+                    <InlineTaskComposer
+                      title={newTitle}
+                      suggestions={suggestions}
+                      onTitleChange={setNewTitle}
+                      onAdd={addTask}
+                      onAddDivider={addDivider}
+                      onCancel={cancelTaskDraft}
+                    />
+                  )}
                   {mainTasks.map((task) => {
                     const subtasks = childrenByParent.get(task.id) ?? []
                     return (
                       <Box
                         key={task.id}
+                        data-task-group-id={task.id}
                         sx={{
                           bgcolor: task.id === nestingTargetId ? 'action.selected' : 'transparent',
                           borderRadius: 2,
@@ -236,7 +262,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                         >
                           {subtasks.length > 0 && (
                             <SortableContext items={subtasks.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-                              <List disablePadding sx={{ mr: { xs: 4.5, sm: 6 }, pr: 1 }}>
+                              <List disablePadding sx={{ mr: { xs: 4.5, sm: 5 } }}>
                                 {subtasks.map((subtask) => (
                                   <TaskItem
                                     key={subtask.id}
@@ -260,12 +286,22 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                     )
                   })}
                 </List>
-              </Paper>
+              </Box>
             </SortableContext>
             )}
 
             {completed > 0 && (
-              <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                  bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(20, 23, 30, .72)' : 'background.paper',
+                  backdropFilter: 'blur(10px)',
+                }}
+              >
                 <Button
                   color="inherit"
                   fullWidth
@@ -297,6 +333,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                 </Collapse>
               </Paper>
             )}
+            <Box aria-hidden sx={{ height: { xs: 72, sm: 88 }, flexShrink: 0 }} />
             </Box>
             <Box sx={{ width: '33.333333%', flexShrink: 0 }}>
               {nextDate && (
@@ -319,11 +356,20 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           </DragOverlay>
         </DndContext>
 
-        <Box sx={{ position: 'fixed', right: { xs: 20, sm: 32 }, bottom: { xs: 20, sm: 32 }, zIndex: 10, display: 'flex', alignItems: 'center', gap: 1.25 }}>
-          <Fab size="small" color="default" aria-label="Add divider" onClick={addDivider}>
-            <HorizontalRuleRoundedIcon />
-          </Fab>
-          <Fab color="primary" aria-label="Add task" onClick={openTaskComposer}>
+        <Box sx={{ position: 'fixed', right: { xs: 20, sm: 32 }, bottom: { xs: 20, sm: 32 }, zIndex: 10 }}>
+          <Fab
+            color="primary"
+            aria-label="Add task"
+            onClick={openTaskDraft}
+            sx={{
+              width: 64,
+              height: 64,
+              bgcolor: '#3478ff',
+              backgroundImage: 'linear-gradient(145deg, #4b88ff, #225eff)',
+              boxShadow: '0 12px 30px rgba(35, 99, 255, .32)',
+              '&:hover': { bgcolor: '#2868ee' },
+            }}
+          >
             <AddRoundedIcon />
           </Fab>
         </Box>

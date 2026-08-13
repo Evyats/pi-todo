@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -55,6 +56,7 @@ class TaskSchedule(BaseModel):
 
 class TaskParent(BaseModel):
     parent_task_id: int | None = None
+    placement: Literal["before", "after"] | None = None
 
 
 class DividerCreate(BaseModel):
