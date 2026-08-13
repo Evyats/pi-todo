@@ -17,7 +17,6 @@ import { useCompletionPreferences } from './hooks/useCompletionPreferences'
 import { useDaySwipe } from './hooks/useDaySwipe'
 import { useTemplates } from './hooks/useTemplates'
 import { SettingsScreen } from './components/SettingsScreen'
-import { TaskComposer } from './components/TaskComposer'
 import { TasksScreen } from './components/TasksScreen'
 import { organizeTasks } from './taskSelectors'
 
@@ -41,19 +40,19 @@ export default function App({ mode, onToggleMode }) {
     setStyle: setCompletionSoundStyle,
   } = useCompletionPreferences()
   const [celebratingDay, setCelebratingDay] = useState(null)
-  const [taskComposerOpen, setTaskComposerOpen] = useState(false)
+  const [taskDraftOpen, setTaskDraftOpen] = useState(false)
   const [nestingTargetId, setNestingTargetId] = useState(null)
   const nestingTargetRef = useRef(null)
   const [dragMode, setDragMode] = useState('reorder')
   const dragModeRef = useRef('reorder')
   const [leavingParent, setLeavingParent] = useState(false)
+  const leavingParentDirectionRef = useRef(null)
   const [removingDivider, setRemovingDivider] = useState(false)
   const removingDividerRef = useRef(false)
   const pointerStartRef = useRef(null)
   const mainListRef = useRef(null)
   const boundaryPositionRef = useRef(null)
   const dragStartTasksRef = useRef(null)
-  const composerScrollYRef = useRef(0)
   const [draggedTask, setDraggedTask] = useState(null)
   const [collapsingTaskId, setCollapsingTaskId] = useState(null)
   const sensors = useSensors(
@@ -103,13 +102,6 @@ export default function App({ mode, onToggleMode }) {
   }, [days])
 
   useEffect(() => {
-    if (!taskComposerOpen) return undefined
-    const preserveScroll = () => window.scrollTo({ top: composerScrollYRef.current })
-    window.visualViewport?.addEventListener('resize', preserveScroll)
-    return () => window.visualViewport?.removeEventListener('resize', preserveScroll)
-  }, [taskComposerOpen])
-
-  useEffect(() => {
     const handleHistoryChange = () => {
       setScreen(window.history.state?.todoScreen === 'settings' ? 'settings' : 'tasks')
     }
@@ -153,16 +145,13 @@ export default function App({ mode, onToggleMode }) {
     }
   }
 
-  function openTaskComposer() {
-    composerScrollYRef.current = window.scrollY
-    setTaskComposerOpen(true)
+  function openTaskDraft() {
+    setTaskDraftOpen(true)
   }
 
-  function focusTaskComposer(dialogElement) {
-    const input = dialogElement.querySelector('input')
-    input?.focus({ preventScroll: true })
-    window.scrollTo({ top: composerScrollYRef.current })
-    window.setTimeout(() => window.scrollTo({ top: composerScrollYRef.current }), 250)
+  function cancelTaskDraft() {
+    setNewTitle('')
+    setTaskDraftOpen(false)
   }
 
   async function addTask(event, suggestion = null) {
@@ -181,7 +170,7 @@ export default function App({ mode, onToggleMode }) {
       })
       updateSelectedDayTasks((current) => [task, ...current])
       setNewTitle('')
-      setTaskComposerOpen(false)
+      setTaskDraftOpen(false)
       setError('')
     } catch (err) {
       setError(err.message)
@@ -196,6 +185,8 @@ export default function App({ mode, onToggleMode }) {
         body: JSON.stringify({ scheduled_date: selectedDate }),
       })
       updateSelectedDayTasks((current) => [divider, ...current])
+      setNewTitle('')
+      setTaskDraftOpen(false)
       setError('')
     } catch (err) {
       setError(err.message)
@@ -246,6 +237,8 @@ export default function App({ mode, onToggleMode }) {
   async function handleDragEnd(event) {
     const { active, over } = event
     const armedParentId = nestingTargetRef.current
+    const detachPlacement = leavingParentDirectionRef.current
+    leavingParentDirectionRef.current = null
     nestingTargetRef.current = null
     setNestingTargetId(null)
     dragModeRef.current = 'reorder'
@@ -334,7 +327,9 @@ export default function App({ mode, onToggleMode }) {
       return
     }
     if (!over) {
-      if (activeTask.parent_task_id !== null) await moveTaskToParent(activeTask.id, null)
+      if (activeTask.parent_task_id !== null && detachPlacement) {
+        await moveTaskToParent(activeTask.id, null, detachPlacement)
+      }
       return
     }
     const overTask = tasks.find((task) => task.id === over.id)
@@ -346,7 +341,7 @@ export default function App({ mode, onToggleMode }) {
 
     if (activeTask.parent_task_id !== null) {
       if (!overTask || overTask.parent_task_id !== activeTask.parent_task_id) {
-        await moveTaskToParent(activeTask.id, null)
+        if (detachPlacement) await moveTaskToParent(activeTask.id, null, detachPlacement)
         return
       }
     }
@@ -414,7 +409,7 @@ export default function App({ mode, onToggleMode }) {
     setNestingTargetId(candidateId)
   }
 
-  function handleDragMove({ active, delta, over }) {
+  function handleDragMove({ active, delta }) {
     const activeTask = tasks.find((task) => task.id === active.id)
     const activeTaskHasChildren = tasks.some((task) => task.parent_task_id === active.id)
     const listBounds = mainListRef.current?.getBoundingClientRect()
@@ -463,9 +458,22 @@ export default function App({ mode, onToggleMode }) {
       setRemovingDivider(false)
     }
     if (activeTask && activeTask.parent_task_id !== null) {
-      const overTask = tasks.find((task) => task.id === over?.id)
-      setLeavingParent(overTask?.parent_task_id !== activeTask.parent_task_id)
+      const pointerY = pointerStartRef.current ? pointerStartRef.current.y + delta.y : null
+      const group = mainListRef.current?.querySelector(
+        `[data-task-group-id="${activeTask.parent_task_id}"]`,
+      )
+      const groupBounds = group?.getBoundingClientRect()
+      const direction = pointerY !== null && groupBounds
+        ? pointerY < groupBounds.top
+          ? 'before'
+          : pointerY > groupBounds.bottom
+            ? 'after'
+            : null
+        : null
+      leavingParentDirectionRef.current = direction
+      setLeavingParent(direction !== null)
     } else {
+      leavingParentDirectionRef.current = null
       setLeavingParent(false)
     }
     if (nextMode === 'nest') boundaryPositionRef.current = null
@@ -476,21 +484,27 @@ export default function App({ mode, onToggleMode }) {
     setNestingTargetId(null)
   }
 
-  async function moveTaskToParent(taskId, parentTaskId) {
+  async function moveTaskToParent(taskId, parentTaskId, placement = null) {
     const previous = tasks
     updateSelectedDayTasks((current) => {
       const task = current.find((item) => item.id === taskId)
       if (!task) return current
-      return [
-        ...current.filter((item) => item.id !== taskId),
-        { ...task, parent_task_id: parentTaskId },
-      ]
+      const remaining = current.filter((item) => item.id !== taskId)
+      const updatedTask = { ...task, parent_task_id: parentTaskId }
+      if (parentTaskId === null && placement && task.parent_task_id !== null) {
+        const parentIndex = remaining.findIndex((item) => item.id === task.parent_task_id)
+        if (parentIndex >= 0) {
+          remaining.splice(parentIndex + (placement === 'after' ? 1 : 0), 0, updatedTask)
+          return remaining
+        }
+      }
+      return [...remaining, updatedTask]
     })
     try {
       const updated = await request(`${API}/${taskId}/parent`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parent_task_id: parentTaskId }),
+        body: JSON.stringify({ parent_task_id: parentTaskId, placement }),
       })
       updateSelectedDayTasks((current) => current.map((task) => task.id === taskId ? updated : task))
       setError('')
@@ -516,7 +530,10 @@ export default function App({ mode, onToggleMode }) {
   const weekStartIndex = days.findIndex((day, index) => index > 0 && day.weekdayIndex === 0)
 
   return (
-    <Container maxWidth="sm" sx={{ py: { xs: 4, sm: 8 }, overflowX: 'hidden' }}>
+    <Container
+      maxWidth="sm"
+      sx={{ px: { xs: 1, sm: 2 }, py: { xs: 2.5, sm: 4 }, overflowX: 'hidden' }}
+    >
       {screen === 'settings' ? (
         <SettingsScreen
           mode={mode}
@@ -545,23 +562,15 @@ export default function App({ mode, onToggleMode }) {
           handleDragEnd, nestingTargetRef, setNestingTargetId, removingDividerRef,
           setRemovingDivider, setLeavingParent, mainListRef, nestingTargetId,
           collapsingTaskId, dragMode, draggedTask, leavingParent, removingDivider,
+          leavingParentDirectionRef,
         }}
-        actions={{ updateSelectedDayTasks, updateTask, deleteTask, openSettings, addDivider, openTaskComposer }}
+        actions={{ updateSelectedDayTasks, updateTask, deleteTask, openSettings, addDivider, openTaskDraft, addTask, cancelTaskDraft }}
         ui={{
           error, setError, loading, completedOpen, setCompletedOpen,
-          completionSound, completionSoundStyle,
+          completionSound, completionSoundStyle, taskDraftOpen, newTitle, setNewTitle, suggestions,
         }}
       />
       )}
-      <TaskComposer
-        open={taskComposerOpen}
-        title={newTitle}
-        suggestions={suggestions}
-        onTitleChange={setNewTitle}
-        onAdd={addTask}
-        onClose={() => setTaskComposerOpen(false)}
-        onEntered={focusTaskComposer}
-      />
     </Container>
   )
 }

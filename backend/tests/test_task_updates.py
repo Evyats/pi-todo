@@ -5,8 +5,8 @@ from datetime import date
 from pathlib import Path
 
 from app.database import get_connection, initialize_database
-from app.main import list_tasks, update_task
-from app.models import TaskUpdate
+from app.main import list_tasks, set_task_parent, update_task
+from app.models import TaskParent, TaskUpdate
 
 
 class TaskUpdateTests(unittest.TestCase):
@@ -88,6 +88,33 @@ class TaskUpdateTests(unittest.TestCase):
 
         pending = [task.title for task in list_tasks(date.today()) if not task.completed]
         self.assertEqual(pending, ["First pending", "Second pending", "Restore me"])
+
+    def test_detached_child_is_placed_after_its_former_parent(self) -> None:
+        today = date.today().isoformat()
+        with get_connection() as connection:
+            connection.executemany(
+                """
+                INSERT INTO tasks (title, sort_order, scheduled_date)
+                VALUES (?, ?, ?)
+                """,
+                [("Before", 0, today), ("Parent", 1, today), ("After", 2, today)],
+            )
+            parent_id = connection.execute(
+                "SELECT id FROM tasks WHERE title = 'Parent'"
+            ).fetchone()["id"]
+            cursor = connection.execute(
+                """
+                INSERT INTO tasks (title, sort_order, scheduled_date, parent_task_id)
+                VALUES ('Child', 0, ?, ?)
+                """,
+                (today, parent_id),
+            )
+            child_id = cursor.lastrowid
+
+        set_task_parent(child_id, TaskParent(parent_task_id=None, placement="after"))
+
+        pending = [task.title for task in list_tasks(date.today()) if not task.completed]
+        self.assertEqual(pending, ["Before", "Parent", "Child", "After"])
 
 
 if __name__ == "__main__":

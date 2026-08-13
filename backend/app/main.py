@@ -335,7 +335,11 @@ def reorder_tasks(payload: TaskOrder) -> Response:
 def set_task_parent(task_id: int, payload: TaskParent) -> Task:
     with get_connection() as connection:
         task = connection.execute(
-            "SELECT id, scheduled_date, is_divider FROM tasks WHERE id = ?", (task_id,)
+            """
+            SELECT id, scheduled_date, parent_task_id, is_divider
+            FROM tasks WHERE id = ?
+            """,
+            (task_id,),
         ).fetchone()
         if task is None:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -372,17 +376,48 @@ def set_task_parent(task_id: int, payload: TaskParent) -> Task:
                     status_code=400, detail="A task with subtasks cannot become a subtask"
                 )
 
-        next_order = connection.execute(
-            """
-            SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks
-            WHERE scheduled_date = ? AND parent_task_id IS ?
-            """,
-            (task["scheduled_date"], payload.parent_task_id),
-        ).fetchone()[0]
-        connection.execute(
-            "UPDATE tasks SET parent_task_id = ?, sort_order = ? WHERE id = ?",
-            (payload.parent_task_id, next_order, task_id),
+        placed_relative_to_parent = (
+            payload.parent_task_id is None
+            and payload.placement is not None
+            and task["parent_task_id"] is not None
         )
+        if placed_relative_to_parent:
+            main_ids = [
+                row["id"]
+                for row in connection.execute(
+                    """
+                    SELECT id FROM tasks
+                    WHERE scheduled_date = ? AND parent_task_id IS NULL AND completed = 0
+                    ORDER BY sort_order, id
+                    """,
+                    (task["scheduled_date"],),
+                ).fetchall()
+            ]
+            try:
+                parent_index = main_ids.index(task["parent_task_id"])
+            except ValueError as error:
+                raise HTTPException(status_code=409, detail="Parent task is out of date") from error
+            insert_at = parent_index + (1 if payload.placement == "after" else 0)
+            main_ids.insert(insert_at, task_id)
+            connection.execute(
+                "UPDATE tasks SET parent_task_id = NULL WHERE id = ?", (task_id,)
+            )
+            connection.executemany(
+                "UPDATE tasks SET sort_order = ? WHERE id = ?",
+                [(position, current_id) for position, current_id in enumerate(main_ids)],
+            )
+        else:
+            next_order = connection.execute(
+                """
+                SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks
+                WHERE scheduled_date = ? AND parent_task_id IS ?
+                """,
+                (task["scheduled_date"], payload.parent_task_id),
+            ).fetchone()[0]
+            connection.execute(
+                "UPDATE tasks SET parent_task_id = ?, sort_order = ? WHERE id = ?",
+                (payload.parent_task_id, next_order, task_id),
+            )
     return fetch_task(task_id)
 
 

@@ -24,11 +24,22 @@ export function SettingsScreen({
   const toggleSection = (value) => onSectionChange(section === value ? null : value)
   return (
     <Stack spacing={3}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-        <Typography variant="h2" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 31, sm: 38 }, fontWeight: 800, letterSpacing: '-.045em' }}>
-          Settings
-        </Typography>
-        <IconButton aria-label="Back to tasks" onClick={onClose}><ArrowBackRoundedIcon /></IconButton>
+      <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 44 }}>
+        <Stack spacing={0.4} sx={{ alignItems: 'center' }}>
+          <Typography variant="h2" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}>
+            Settings
+          </Typography>
+          <Typography sx={{ color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400 }}>
+            Some settings are device-specific
+          </Typography>
+        </Stack>
+        <IconButton
+          aria-label="Back to tasks"
+          onClick={onClose}
+          sx={{ position: 'absolute', right: 0, width: 34, height: 34, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}
+        >
+          <ArrowBackRoundedIcon />
+        </IconButton>
       </Box>
 
       <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>

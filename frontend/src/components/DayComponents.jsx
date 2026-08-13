@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { keyframes } from '@emotion/react'
 import DragIndicatorRoundedIcon from '@mui/icons-material/DragIndicatorRounded'
-import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -31,15 +31,16 @@ export function DayTab({ day, selected, celebrating, onSelect }) {
         flex: 1,
         position: 'relative',
         zIndex: 1,
-        py: 0.45,
-        borderRadius: 2,
+        height: { xs: 48, sm: 52 },
+        py: 0.5,
+        borderRadius: 2.5,
         color: selected ? 'primary.contrastText' : 'text.secondary',
         bgcolor: isOver ? 'action.hover' : 'transparent',
         boxShadow: 0,
         transition: 'background-color 120ms ease, box-shadow 120ms ease',
         '@media (hover: hover) and (pointer: fine)': {
           '&:hover': {
-            bgcolor: selected ? 'primary.dark' : 'action.hover',
+            bgcolor: 'action.hover',
           },
         },
       }}
@@ -58,11 +59,11 @@ export function DayTab({ day, selected, celebrating, onSelect }) {
           }}
         />
       )}
-      <Stack spacing={0} sx={{ alignItems: 'center' }}>
-        <Typography component="span" variant="caption" sx={{ fontSize: 11, fontWeight: 800, lineHeight: 1.15 }}>
+      <Stack spacing={0.35} sx={{ alignItems: 'center' }}>
+        <Typography component="span" variant="caption" sx={{ fontSize: { xs: 11, sm: 12 }, fontWeight: 700, lineHeight: 1.15, letterSpacing: '.02em' }}>
           {day.weekday}
         </Typography>
-        <Typography component="span" sx={{ fontSize: 14, fontWeight: 700, lineHeight: 1.25 }}>
+        <Typography component="span" sx={{ fontSize: { xs: 15, sm: 17 }, fontWeight: 700, lineHeight: 1.15 }}>
           {day.day}
         </Typography>
       </Stack>
@@ -107,11 +108,11 @@ export function StaticDayPanel({ tasks, completedOpen, onOpenCompleted }) {
     <Stack spacing={3} sx={{ px: 0.5, pointerEvents: 'none' }}>
       {pending.length === 0 ? (
         <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary' }}>
-          <CheckCircleRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
+          <CheckCircleOutlineRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
           <Typography>Nothing planned for this day.</Typography>
         </Stack>
       ) : (
-        <Paper elevation={0} sx={{ px: { xs: 0.5, sm: 2 }, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+        <Box sx={{ px: { xs: 0.5, sm: 1 }, bgcolor: 'transparent' }}>
           <List disablePadding>
             {main.map((task) => {
               const subtasks = childrenByParent.get(task.id) ?? []
@@ -126,7 +127,7 @@ export function StaticDayPanel({ tasks, completedOpen, onOpenCompleted }) {
                   onDelete={ignore}
                 >
                   {subtasks.length > 0 && (
-                    <List disablePadding sx={{ mr: { xs: 4.5, sm: 6 }, pr: 1 }}>
+                    <List disablePadding sx={{ mr: { xs: 4.5, sm: 5 } }}>
                       {subtasks.map((subtask) => (
                         <StaticTaskItem
                           key={subtask.id}
@@ -143,10 +144,20 @@ export function StaticDayPanel({ tasks, completedOpen, onOpenCompleted }) {
               )
             })}
           </List>
-        </Paper>
+        </Box>
       )}
       {completed.length > 0 && (
-        <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+        <Paper
+          elevation={0}
+          sx={{
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 3,
+            overflow: 'hidden',
+            bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(20, 23, 30, .72)' : 'background.paper',
+            backdropFilter: 'blur(10px)',
+          }}
+        >
           <Button
             color="inherit"
             fullWidth
@@ -167,6 +178,7 @@ export function StaticDayPanel({ tasks, completedOpen, onOpenCompleted }) {
           </Collapse>
         </Paper>
       )}
+      <Box aria-hidden sx={{ height: { xs: 72, sm: 88 }, flexShrink: 0 }} />
     </Stack>
   )
 }

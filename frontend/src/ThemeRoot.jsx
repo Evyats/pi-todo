@@ -12,9 +12,9 @@ export default function ThemeRoot() {
   const theme = useMemo(() => createTheme({
     palette: {
       mode,
-      primary: { main: mode === 'dark' ? '#8ab4f8' : '#1a73e8' },
+      primary: { main: mode === 'dark' ? '#3478ff' : '#1a73e8' },
       background: mode === 'dark'
-        ? { default: '#101318', paper: '#191d24' }
+        ? { default: '#0b0d12', paper: '#151820' }
         : { default: '#f7f8fc', paper: '#ffffff' },
     },
     shape: { borderRadius: 6 },
@@ -22,12 +22,23 @@ export default function ThemeRoot() {
       fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       button: { fontWeight: 700 },
     },
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: mode === 'dark' ? {
+            backgroundColor: '#0b0d12',
+            backgroundImage: 'radial-gradient(circle at 48% 8%, rgba(44, 54, 78, .16), transparent 28%), radial-gradient(circle at 85% 45%, rgba(30, 48, 83, .08), transparent 34%)',
+            backgroundAttachment: 'fixed',
+          } : {},
+        },
+      },
+    },
   }), [mode])
 
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, mode)
     document.querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', mode === 'dark' ? '#101318' : '#f7f8fc')
+      ?.setAttribute('content', mode === 'dark' ? '#0b0d12' : '#f7f8fc')
   }, [mode])
 
   return (

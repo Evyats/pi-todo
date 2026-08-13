@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { keyframes } from '@emotion/react'
-import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import DragIndicatorRoundedIcon from '@mui/icons-material/DragIndicatorRounded'
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
@@ -14,7 +14,6 @@ import Collapse from '@mui/material/Collapse'
 import IconButton from '@mui/material/IconButton'
 import List from '@mui/material/List'
 import ListItem from '@mui/material/ListItem'
-import LinearProgress from '@mui/material/LinearProgress'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
@@ -123,8 +122,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
           transition,
         }}
       >
-        <ListItem disableGutters sx={{ minHeight: 40, gap: { xs: 0.5, sm: 1.25 }, py: 0 }}>
-          <Box aria-hidden sx={{ width: 40, height: 40, flexShrink: 0 }} />
+        <ListItem disableGutters sx={{ minHeight: 40, gap: { xs: 0.15, sm: 0.5 }, py: 0 }}>
           <Box sx={{ flex: 1, borderTop: 1, borderColor: 'divider' }} />
           <IconButton
             ref={setActivatorNodeRef}
@@ -158,7 +156,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
       sx={{
         minHeight: collapsing ? 0 : 56,
         maxHeight: collapsing ? 0 : 500,
-        gap: { xs: 0.5, sm: 1.25 },
+        gap: { xs: 0.15, sm: 0.5 },
         py: collapsing ? 0 : 0.35,
         overflow: 'hidden',
         borderRadius: celebrating ? 1.5 : 0,
@@ -173,6 +171,37 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
         <IconButton color="error" aria-label={`Delete ${task.title}`} onClick={() => onDelete(task.id)}>
           <DeleteOutlineRoundedIcon />
         </IconButton>
+      ) : task.estimated_minutes ? (
+        <Box
+          aria-label={`${task.estimated_minutes} minute estimate`}
+          sx={{
+            display: 'grid',
+            width: 40,
+            height: 40,
+            flexShrink: 0,
+            placeItems: 'center',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'grid',
+              width: 28,
+              height: 28,
+              placeItems: 'center',
+              alignContent: 'center',
+              gap: 0.2,
+              borderRadius: 1.25,
+              color: 'primary.contrastText',
+              bgcolor: 'primary.main',
+              fontWeight: 800,
+              lineHeight: 1,
+              opacity: 0.22 + ((task.estimated_minutes / 120) * 0.78),
+            }}
+          >
+            <Box component="span" sx={{ fontSize: 11 }}>{task.estimated_minutes}</Box>
+            <Box component="span" sx={{ fontSize: 7 }}>min</Box>
+          </Box>
+        </Box>
       ) : (
         <Box aria-hidden sx={{ width: 40, height: 40, flexShrink: 0 }} />
       )}
@@ -186,7 +215,8 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             size="small"
             variant="standard"
             value={title}
-            slotProps={{ htmlInput: { maxLength: 300 } }}
+            slotProps={{ htmlInput: { maxLength: 300, dir: 'auto' } }}
+            sx={{ '& input': { textAlign: 'start' } }}
             onChange={(event) => setTitle(event.target.value)}
             onBlur={save}
             onKeyDown={(event) => event.key === 'Escape' && cancel()}
@@ -195,6 +225,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
       ) : titleEditable ? (
         <Button
           color="inherit"
+          dir="auto"
           onClick={() => setEditing(true)}
           sx={{
             width: '100%',
@@ -206,7 +237,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             fontSize: '0.875rem',
             lineHeight: 1.75,
             fontWeight: 400,
-            textAlign: 'left',
+            textAlign: 'start',
             textDecoration: task.completed ? 'line-through' : 'none',
             textTransform: 'none',
           }}
@@ -216,6 +247,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
       ) : (
         <Typography
           component="div"
+          dir="auto"
           sx={{
             width: '100%',
             px: 0.5,
@@ -225,35 +257,30 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             fontSize: '0.875rem',
             lineHeight: 1.75,
             fontWeight: 400,
-            textAlign: 'left',
+            textAlign: 'start',
             textDecoration: task.completed ? 'line-through' : 'none',
           }}
         >
           {task.title}
         </Typography>
       )}
-      {task.estimated_minutes && (
-        <Box sx={{ px: 0.5, pb: 0.5 }}>
-          <LinearProgress
-            variant="determinate"
-            value={(task.estimated_minutes / 120) * 100}
-            aria-label={`${task.estimated_minutes} minute estimate`}
-            sx={{ height: 5, borderRadius: 99 }}
-          />
-        </Box>
-      )}
       </Box>
 
-      <Box sx={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
+      <Box sx={{ position: 'relative', width: 36, height: 40, flexShrink: 0 }}>
         {celebrating && <CompletionEffect />}
         <IconButton
           color={task.completed || celebrating ? 'success' : 'default'}
           aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
           disabled={celebrating}
           onClick={toggleCompleted}
-          sx={{ animation: celebrating ? `${checkBounce} 340ms ${celebrationDelay}ms ease-out both` : 'none' }}
+          sx={{
+            width: 36,
+            height: 36,
+            p: 0.75,
+            animation: celebrating ? `${checkBounce} 340ms ${celebrationDelay}ms ease-out both` : 'none',
+          }}
         >
-          {task.completed || celebrating ? <CheckCircleRoundedIcon /> : <RadioButtonUncheckedRoundedIcon />}
+          {task.completed || celebrating ? <CheckCircleOutlineRoundedIcon /> : <RadioButtonUncheckedRoundedIcon />}
         </IconButton>
       </Box>
 
@@ -264,7 +291,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
         disabled={task.completed}
         {...attributes}
         {...listeners}
-        sx={{ color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+        sx={{ width: 36, height: 36, p: 0.75, color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
       >
         {task.recurring_task_id === null ? <DragIndicatorRoundedIcon /> : <RepeatRoundedIcon />}
       </IconButton>
