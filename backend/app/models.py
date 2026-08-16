@@ -95,4 +95,8 @@ class RecurringTaskUpdate(SuggestionCreate):
 
 
 class RecurringTask(Suggestion):
-    pass
+    sort_order: int
+
+
+class RecurringTaskOrder(BaseModel):
+    recurring_task_ids: list[int]

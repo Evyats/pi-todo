@@ -9,7 +9,7 @@ function byTitle(first, second) {
   return first.title.localeCompare(second.title)
 }
 
-export function useTemplates(endpoint, setError, onCreated) {
+export function useTemplates(endpoint, setError, onCreated, ordered = false) {
   const [items, setItems] = useState([])
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export function useTemplates(endpoint, setError, onCreated) {
         title: cleanTitle,
         estimated_minutes: normalizeMinutes(estimatedMinutes),
       }))
-      setItems((current) => [...current, created].sort(byTitle))
+      setItems((current) => ordered ? [...current, created] : [...current, created].sort(byTitle))
       setError('')
       onCreated?.(created)
       return true
@@ -42,9 +42,10 @@ export function useTemplates(endpoint, setError, onCreated) {
         title: cleanTitle,
         estimated_minutes: normalizeMinutes(estimatedMinutes),
       }))
-      setItems((current) => current
-        .map((item) => item.id === id ? updated : item)
-        .sort(byTitle))
+      setItems((current) => {
+        const changed = current.map((item) => item.id === id ? updated : item)
+        return ordered ? changed : changed.sort(byTitle)
+      })
       setError('')
       return true
     } catch (error) {
@@ -63,5 +64,25 @@ export function useTemplates(endpoint, setError, onCreated) {
     }
   }
 
-  return { items, add, update, remove }
+  async function move(id, direction) {
+    const oldItems = items
+    const currentIndex = oldItems.findIndex((item) => item.id === id)
+    const targetIndex = currentIndex + direction
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= oldItems.length) return
+    const reordered = [...oldItems]
+    const [moved] = reordered.splice(currentIndex, 1)
+    reordered.splice(targetIndex, 0, moved)
+    setItems(reordered)
+    try {
+      await request(`${endpoint}/order`, jsonOptions('PUT', {
+        recurring_task_ids: reordered.map((item) => item.id),
+      }))
+      setError('')
+    } catch (error) {
+      setItems(oldItems)
+      setError(error.message)
+    }
+  }
+
+  return { items, add, update, remove, move: ordered ? move : null }
 }

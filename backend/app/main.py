@@ -10,6 +10,7 @@ from .models import (
     DividerCreate,
     RecurringTask,
     RecurringTaskCreate,
+    RecurringTaskOrder,
     RecurringTaskUpdate,
     Suggestion,
     SuggestionCreate,
@@ -139,8 +140,8 @@ def list_recurring_tasks() -> list[RecurringTask]:
     with get_connection() as connection:
         rows = connection.execute(
             """
-            SELECT id, title, estimated_minutes, created_at
-            FROM recurring_tasks ORDER BY title COLLATE NOCASE
+            SELECT id, title, estimated_minutes, sort_order, created_at
+            FROM recurring_tasks ORDER BY sort_order, id
             """
         ).fetchall()
     return [RecurringTask(**dict(row)) for row in rows]
@@ -156,15 +157,15 @@ def create_recurring_task(payload: RecurringTaskCreate) -> RecurringTask:
         with get_connection() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO recurring_tasks (title, estimated_minutes)
-                VALUES (?, ?)
+                INSERT INTO recurring_tasks (title, estimated_minutes, sort_order)
+                VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM recurring_tasks))
                 """,
                 (payload.title, payload.estimated_minutes),
             )
             recurring_task_id = cursor.lastrowid
             row = connection.execute(
                 """
-                SELECT id, title, estimated_minutes, created_at
+                SELECT id, title, estimated_minutes, sort_order, created_at
                 FROM recurring_tasks WHERE id = ?
                 """,
                 (recurring_task_id,),
@@ -172,6 +173,26 @@ def create_recurring_task(payload: RecurringTaskCreate) -> RecurringTask:
     except sqlite3.IntegrityError as error:
         raise HTTPException(status_code=409, detail="Recurring task already exists") from error
     return RecurringTask(**dict(row))
+
+
+@app.put(
+    f"{API_PREFIX}/recurring-tasks/order",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def reorder_recurring_tasks(payload: RecurringTaskOrder) -> Response:
+    if len(payload.recurring_task_ids) != len(set(payload.recurring_task_ids)):
+        raise HTTPException(status_code=400, detail="Recurring task IDs must be unique")
+    with get_connection() as connection:
+        current_ids = {
+            row[0] for row in connection.execute("SELECT id FROM recurring_tasks")
+        }
+        if set(payload.recurring_task_ids) != current_ids:
+            raise HTTPException(status_code=409, detail="Recurring task list is out of date")
+        connection.executemany(
+            "UPDATE recurring_tasks SET sort_order = ? WHERE id = ?",
+            [(position, task_id) for position, task_id in enumerate(payload.recurring_task_ids)],
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.patch(
@@ -193,7 +214,7 @@ def update_recurring_task(
                 raise HTTPException(status_code=404, detail="Recurring task not found")
             row = connection.execute(
                 """
-                SELECT id, title, estimated_minutes, created_at
+                SELECT id, title, estimated_minutes, sort_order, created_at
                 FROM recurring_tasks WHERE id = ?
                 """,
                 (recurring_task_id,),

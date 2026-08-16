@@ -7,7 +7,7 @@ A small, mobile-friendly personal todo app built with React, FastAPI, and SQLite
 Backend terminal:
 
 ```powershell
-cd backend
+cd todo-app\backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -17,7 +17,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 Frontend terminal:
 
 ```powershell
-cd frontend
+cd todo-app\frontend
 npm install
 npm run dev
 ```
@@ -27,7 +27,7 @@ npm run dev
 Backend terminal:
 
 ```powershell
-cd backend
+cd todo-app\backend
 .\.venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -35,7 +35,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 Frontend terminal:
 
 ```powershell
-cd frontend
+cd todo-app\frontend
 npm run dev
 ```
 

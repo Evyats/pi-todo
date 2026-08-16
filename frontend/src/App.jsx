@@ -73,7 +73,7 @@ export default function App({ mode, onToggleMode }) {
     if (selectedDate === today) {
       request(`${API}?scheduled_date=${today}`).then(updateSelectedDayTasks).catch((err) => setError(err.message))
     }
-  })
+  }, true)
   const suggestions = suggestionsStore.items
 
   useEffect(() => {
@@ -112,6 +112,7 @@ export default function App({ mode, onToggleMode }) {
   function selectDate(value) {
     if (value === selectedDate) return
     setSelectedDate(value)
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
   }
 
   function openCompletedForDate(value) {
@@ -532,7 +533,7 @@ export default function App({ mode, onToggleMode }) {
   return (
     <Container
       maxWidth="sm"
-      sx={{ px: { xs: 1, sm: 2 }, py: { xs: 2.5, sm: 4 }, overflowX: 'hidden' }}
+      sx={{ px: { xs: 1, sm: 2 }, py: { xs: 2.5, sm: 4 }, overflowX: 'clip' }}
     >
       {screen === 'settings' ? (
         <SettingsScreen

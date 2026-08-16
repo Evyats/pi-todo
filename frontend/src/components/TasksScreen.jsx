@@ -130,7 +130,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           onDragEnd={handleDragEnd}
         >
           <Stack spacing={3}>
-            <Box sx={{ position: 'relative', display: 'flex', minHeight: { xs: 48, sm: 52 } }}>
+            <Box sx={{ position: 'sticky', zIndex: 9, top: 0, display: 'flex', minHeight: { xs: 48, sm: 52 }, py: 0.5, bgcolor: 'background.default' }}>
               <Box
                 sx={{
                   position: 'absolute',

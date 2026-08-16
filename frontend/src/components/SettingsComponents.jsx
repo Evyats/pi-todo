@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
+import KeyboardArrowUpRoundedIcon from '@mui/icons-material/KeyboardArrowUpRounded'
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -12,7 +14,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 
-export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDelete }) {
+export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDelete, onMove = null }) {
   const [newTitle, setNewTitle] = useState('')
   const [newMinutes, setNewMinutes] = useState('')
   const [editingId, setEditingId] = useState(null)
@@ -63,7 +65,7 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
           </Typography>
         ) : (
           <List disablePadding>
-            {templates.map((template) => (
+            {templates.map((template, index) => (
               <ListItem key={template.id} disableGutters divider sx={{ gap: 1, '&:last-child': { borderBottom: 0 } }}>
                 {editingId === template.id ? (
                   <Box component="form" onSubmit={saveSuggestion} sx={{ display: 'flex', flex: 1, gap: 1 }}>
@@ -108,6 +110,12 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
                       )}
                     </Box>
                   </Button>
+                )}
+                {onMove && (
+                  <Stack direction="row" spacing={0}>
+                    <IconButton disabled={index === 0} aria-label={`Move ${template.title} up`} onClick={() => onMove(template.id, -1)}><KeyboardArrowUpRoundedIcon /></IconButton>
+                    <IconButton disabled={index === templates.length - 1} aria-label={`Move ${template.title} down`} onClick={() => onMove(template.id, 1)}><KeyboardArrowDownRoundedIcon /></IconButton>
+                  </Stack>
                 )}
                 <IconButton
                   color="error"
