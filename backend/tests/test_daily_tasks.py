@@ -54,6 +54,55 @@ class DailyTaskServiceTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(dict(rows[0]), {"title": "Exercise", "estimated_minutes": 30})
 
+    def test_new_day_orders_recurring_planned_and_carried_groups(self) -> None:
+        today = date.today().isoformat()
+        self.connection.executemany(
+            "INSERT INTO recurring_tasks (title, sort_order) VALUES (?, ?)",
+            [("First routine", 0), ("Second routine", 1)],
+        )
+        self.connection.execute(
+            "INSERT INTO tasks (title, sort_order, scheduled_date) VALUES ('Already planned', 4, ?)",
+            (today,),
+        )
+        parent_id = self.connection.execute(
+            "INSERT INTO tasks (title, sort_order, scheduled_date) VALUES ('Old parent', 0, '2000-01-01')"
+        ).lastrowid
+        child_id = self.connection.execute(
+            """
+            INSERT INTO tasks (title, sort_order, scheduled_date, parent_task_id)
+            VALUES ('Old child', 0, '2000-01-01', ?)
+            """,
+            (parent_id,),
+        ).lastrowid
+        self.connection.execute(
+            "INSERT INTO tasks (title, sort_order, scheduled_date) VALUES ('Old second', 1, '2000-01-01')"
+        )
+
+        carry_over_incomplete_tasks(self.connection)
+        create_today_recurring_tasks(self.connection)
+
+        main_titles = [
+            row["title"]
+            for row in self.connection.execute(
+                """
+                SELECT title FROM tasks
+                WHERE scheduled_date = ? AND parent_task_id IS NULL
+                ORDER BY sort_order, id
+                """,
+                (today,),
+            )
+        ]
+        self.assertEqual(
+            main_titles,
+            ["First routine", "Second routine", "Already planned", "Old parent", "Old second"],
+        )
+        child = self.connection.execute(
+            "SELECT scheduled_date, parent_task_id FROM tasks WHERE id = ?",
+            (child_id,),
+        ).fetchone()
+        self.assertEqual(child["scheduled_date"], today)
+        self.assertEqual(child["parent_task_id"], parent_id)
+
 
 if __name__ == "__main__":
     unittest.main()

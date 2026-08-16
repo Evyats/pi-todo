@@ -81,10 +81,19 @@ def migrate(connection: Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK(length(trim(title)) > 0),
             estimated_minutes INTEGER CHECK(estimated_minutes BETWEEN 1 AND 120),
+            sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
+    recurring_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(recurring_tasks)")
+    }
+    if "sort_order" not in recurring_columns:
+        connection.execute(
+            "ALTER TABLE recurring_tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+        )
+        connection.execute("UPDATE recurring_tasks SET sort_order = id")
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS one_recurring_task_per_day

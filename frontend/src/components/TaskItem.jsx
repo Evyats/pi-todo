@@ -216,7 +216,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             variant="standard"
             value={title}
             slotProps={{ htmlInput: { maxLength: 300, dir: 'auto' } }}
-            sx={{ '& input': { textAlign: 'start' } }}
+            sx={{ '& input': { textAlign: 'right' } }}
             onChange={(event) => setTitle(event.target.value)}
             onBlur={save}
             onKeyDown={(event) => event.key === 'Escape' && cancel()}
@@ -228,8 +228,8 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
           dir="auto"
           onClick={() => setEditing(true)}
           sx={{
+            display: 'block',
             width: '100%',
-            justifyContent: 'flex-start',
             px: 0.5,
             py: 0.7,
             overflowWrap: 'anywhere',
@@ -237,7 +237,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             fontSize: '0.875rem',
             lineHeight: 1.75,
             fontWeight: 400,
-            textAlign: 'start',
+            textAlign: 'right',
             textDecoration: task.completed ? 'line-through' : 'none',
             textTransform: 'none',
           }}
@@ -257,7 +257,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             fontSize: '0.875rem',
             lineHeight: 1.75,
             fontWeight: 400,
-            textAlign: 'start',
+            textAlign: 'right',
             textDecoration: task.completed ? 'line-through' : 'none',
           }}
         >

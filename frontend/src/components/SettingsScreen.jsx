@@ -69,7 +69,7 @@ export function SettingsScreen({
           <TemplatesManager emptyText="No suggestions yet." templates={suggestionsStore.items} onAdd={suggestionsStore.add} onUpdate={suggestionsStore.update} onDelete={suggestionsStore.remove} />
         </SettingsSection>
         <SettingsSection title="Recurring tasks" expanded={section === 'recurring'} onToggle={() => toggleSection('recurring')}>
-          <TemplatesManager emptyText="No recurring tasks yet." templates={recurringStore.items} onAdd={recurringStore.add} onUpdate={recurringStore.update} onDelete={recurringStore.remove} />
+          <TemplatesManager emptyText="No recurring tasks yet." templates={recurringStore.items} onAdd={recurringStore.add} onUpdate={recurringStore.update} onDelete={recurringStore.remove} onMove={recurringStore.move} />
         </SettingsSection>
       </Paper>
     </Stack>
