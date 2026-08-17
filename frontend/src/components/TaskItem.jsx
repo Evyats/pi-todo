@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { keyframes } from '@emotion/react'
@@ -84,7 +85,8 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
   })
 
   async function save(event) {
-    event.preventDefault()
+    event?.preventDefault()
+    event?.stopPropagation()
     const cleanTitle = title.trim()
     if (!cleanTitle) {
       cancel()
@@ -208,20 +210,13 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
       {editing && titleEditable ? (
-        <Box component="form" onSubmit={save}>
-          <TextField
-            autoFocus
-            fullWidth
-            size="small"
-            variant="standard"
-            value={title}
-            slotProps={{ htmlInput: { maxLength: 300, dir: 'auto' } }}
-            sx={{ '& input': { textAlign: 'right' } }}
-            onChange={(event) => setTitle(event.target.value)}
-            onBlur={save}
-            onKeyDown={(event) => event.key === 'Escape' && cancel()}
-          />
-        </Box>
+        <Typography
+          component="div"
+          dir="auto"
+          sx={{ width: '100%', px: 0.5, py: 0.7, color: 'text.primary', fontSize: '0.875rem', lineHeight: 1.75, textAlign: 'right' }}
+        >
+          {title}
+        </Typography>
       ) : titleEditable ? (
         <Button
           color="inherit"
@@ -297,6 +292,67 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
       </IconButton>
     </ListItem>
     {children}
+    {editing && titleEditable && createPortal(
+      <Box
+        role="presentation"
+        onClick={save}
+        sx={{
+          position: 'fixed',
+          zIndex: 1400,
+          inset: 0,
+          bgcolor: 'rgba(0, 0, 0, .42)',
+        }}
+      >
+        <Paper
+          component="form"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit task text"
+          elevation={10}
+          onSubmit={save}
+          onClick={save}
+          sx={{
+            position: 'absolute',
+            top: { xs: 'max(16px, env(safe-area-inset-top))', sm: '50%' },
+            left: '50%',
+            width: 'min(520px, calc(100vw - 24px))',
+            maxHeight: 'calc(100dvh - 32px)',
+            overflowY: 'auto',
+            transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
+            p: { xs: 2, sm: 2.5 },
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+          }}
+        >
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={3}
+            maxRows={8}
+            label="Task text"
+            value={title}
+            slotProps={{ htmlInput: { maxLength: 300, dir: 'auto' } }}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                cancel()
+              } else if (event.key === 'Enter' && !event.shiftKey) {
+                save(event)
+              }
+            }}
+            sx={{ '& textarea': { textAlign: 'right' } }}
+          />
+          <Typography sx={{ mt: 1.25, color: 'text.secondary', fontSize: 12, textAlign: 'center' }}>
+            Press Enter or tap outside to save
+          </Typography>
+        </Paper>
+      </Box>,
+      document.body,
+    )}
     </Box>
   )
 }
