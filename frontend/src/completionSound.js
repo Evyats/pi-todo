@@ -1,7 +1,7 @@
 export const SOUND_OPTIONS = [
+  ['coin-pickup', 'Coin pickup'],
   ['glass-clink', 'Glass clink'],
   ['soft-bell', 'Soft bell'],
-  ['coin-pickup', 'Coin pickup'],
   ['digital-success', 'Digital success'],
   ['crystal-sparkle', 'Crystal sparkle'],
   ['soft-marimba', 'Soft marimba'],
@@ -9,7 +9,7 @@ export const SOUND_OPTIONS = [
 
 export const SOUND_OPTION_VALUES = new Set(SOUND_OPTIONS.map(([value]) => value))
 
-export function playCompletionSound(style = 'glass-clink') {
+export function playCompletionSound(style = 'coin-pickup') {
   const AudioContext = window.AudioContext || window.webkitAudioContext
   if (!AudioContext) return
   const context = new AudioContext()
@@ -21,7 +21,7 @@ export function playCompletionSound(style = 'glass-clink') {
     'crystal-sparkle': [[1760, 0, .14, 'sine'], [2349, .055, .15, 'sine'], [2093, .12, .2, 'sine']],
     'soft-marimba': [[440, 0, .2, 'sine'], [880, 0, .11, 'sine']],
   }
-  const notes = presets[style] || presets['glass-clink']
+  const notes = presets[style] || presets['coin-pickup']
   let finishAt = 0
   notes.forEach(([frequency, delay, duration, type, endFrequency]) => {
     const oscillator = context.createOscillator()

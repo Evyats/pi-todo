@@ -15,6 +15,8 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import { dateKey } from '../dates'
+import { remainingNoticeDays } from '../hooks/useNotices'
 
 export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDelete, onMove = null }) {
   const [newTitle, setNewTitle] = useState('')
@@ -174,6 +176,101 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
             </Stack>
           </Paper>
         </Modal>
+    </Box>
+  )
+}
+
+export function NoticesManager({ notices, onAdd, onUpdate, onDelete, onMove }) {
+  const [newTitle, setNewTitle] = useState('')
+  const [newDays, setNewDays] = useState(1)
+  const [editingId, setEditingId] = useState(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [editingDays, setEditingDays] = useState(1)
+  const [saving, setSaving] = useState(false)
+  const today = dateKey()
+  const validDays = (value) => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 365
+
+  async function addNotice(event) {
+    event.preventDefault()
+    if (!newTitle.trim() || !validDays(newDays)) return
+    if (await onAdd(newTitle, Number(newDays))) {
+      setNewTitle('')
+      setNewDays(1)
+    }
+  }
+
+  function startEditing(notice) {
+    setEditingId(notice.id)
+    setEditingTitle(notice.title)
+    setEditingDays(remainingNoticeDays(notice.expires_on, today))
+  }
+
+  async function saveNotice(event) {
+    event?.preventDefault()
+    if (!editingTitle.trim() || !validDays(editingDays) || saving) return
+    setSaving(true)
+    if (await onUpdate(editingId, editingTitle, Number(editingDays))) setEditingId(null)
+    setSaving(false)
+  }
+
+  return (
+    <Box sx={{ px: 2, pb: 2, borderTop: 1, borderColor: 'divider' }}>
+      <Stack component="form" direction="row" spacing={1} onSubmit={addNotice} sx={{ pt: 2, mb: 2 }}>
+        <TextField
+          fullWidth
+          size="small"
+          label="New notice"
+          value={newTitle}
+          slotProps={{ htmlInput: { maxLength: 300 } }}
+          onChange={(event) => setNewTitle(event.target.value)}
+        />
+        <TextField
+          type="number"
+          size="small"
+          label="Days"
+          value={newDays}
+          slotProps={{ htmlInput: { min: 1, max: 365 } }}
+          onChange={(event) => setNewDays(event.target.value)}
+          sx={{ width: 92, flexShrink: 0 }}
+        />
+        <Button type="submit" variant="contained" disabled={!newTitle.trim() || !validDays(newDays)} aria-label="Add notice">+</Button>
+      </Stack>
+
+      {notices.length === 0 ? (
+        <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No active notices.</Typography>
+      ) : (
+        <List disablePadding>
+          {notices.map((notice, index) => {
+            const daysLeft = remainingNoticeDays(notice.expires_on, today)
+            return (
+              <ListItem key={notice.id} disableGutters divider sx={{ gap: 1, '&:last-child': { borderBottom: 0 } }}>
+                <Button color="inherit" onClick={() => startEditing(notice)} sx={{ minWidth: 0, flex: 1, justifyContent: 'flex-start', textTransform: 'none', textAlign: 'left' }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ overflowWrap: 'anywhere' }}>{notice.title}</Typography>
+                    <Typography variant="caption" color="text.secondary">{daysLeft} {daysLeft === 1 ? 'day' : 'days'} left</Typography>
+                  </Box>
+                </Button>
+                <Stack direction="row" spacing={0}>
+                  <IconButton disabled={index === 0} aria-label={`Move ${notice.title} up`} onClick={() => onMove(notice.id, -1)}><KeyboardArrowUpRoundedIcon /></IconButton>
+                  <IconButton disabled={index === notices.length - 1} aria-label={`Move ${notice.title} down`} onClick={() => onMove(notice.id, 1)}><KeyboardArrowDownRoundedIcon /></IconButton>
+                </Stack>
+                <IconButton color="error" aria-label={`Delete notice ${notice.title}`} onClick={() => onDelete(notice.id)}><DeleteOutlineRoundedIcon /></IconButton>
+              </ListItem>
+            )
+          })}
+        </List>
+      )}
+
+      <Modal open={editingId !== null} onClose={(_, reason) => { if (reason === 'backdropClick') saveNotice() }} aria-labelledby="notice-editor-title">
+        <Paper component="form" onSubmit={saveNotice} elevation={8} sx={{ position: 'fixed', top: { xs: 'max(16px, env(safe-area-inset-top))', sm: '50%' }, left: '50%', width: 'min(520px, calc(100vw - 24px))', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' }, p: { xs: 2, sm: 2.5 }, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+          <Typography id="notice-editor-title" variant="h6" sx={{ mb: 1.5, fontWeight: 700 }}>Edit notice</Typography>
+          <TextField autoFocus fullWidth multiline minRows={3} maxRows={7} label="Notice text" value={editingTitle} slotProps={{ htmlInput: { maxLength: 300 } }} onChange={(event) => setEditingTitle(event.target.value)} />
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mt: 1.5 }}>
+            <TextField type="number" size="small" label="Days remaining" value={editingDays} slotProps={{ htmlInput: { min: 1, max: 365 } }} onChange={(event) => setEditingDays(event.target.value)} sx={{ width: 150 }} />
+            <Button type="submit" variant="contained" disabled={saving || !editingTitle.trim() || !validDays(editingDays)} sx={{ ml: 'auto !important' }}>Save</Button>
+          </Stack>
+        </Paper>
+      </Modal>
     </Box>
   )
 }

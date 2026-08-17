@@ -100,3 +100,31 @@ class RecurringTask(Suggestion):
 
 class RecurringTaskOrder(BaseModel):
     recurring_task_ids: list[int]
+
+
+class NoticeCreate(BaseModel):
+    title: str
+    duration_days: int = Field(ge=1, le=365)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        return TaskCreate.validate_title(value)
+
+
+class NoticeUpdate(NoticeCreate):
+    pass
+
+
+class Notice(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    expires_on: date
+    sort_order: int
+    created_at: str
+
+
+class NoticeOrder(BaseModel):
+    notice_ids: list[int]

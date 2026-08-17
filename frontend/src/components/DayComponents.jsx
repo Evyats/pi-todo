@@ -107,7 +107,7 @@ export function StaticDayPanel({ tasks, completedOpen, onOpenCompleted }) {
   return (
     <Stack spacing={3} sx={{ px: 0.5, pointerEvents: 'none' }}>
       {pending.length === 0 ? (
-        <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary' }}>
+        <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary', WebkitUserSelect: 'none', userSelect: 'none' }}>
           <CheckCircleOutlineRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
           <Typography>Nothing planned for this day.</Typography>
         </Stack>

@@ -21,6 +21,7 @@ import { DayTab, DraggedTask, StaticDayPanel } from './DayComponents'
 import { TaskItem } from './TaskItem'
 import { InlineTaskComposer } from './InlineTaskComposer'
 import { playCompletionSound } from '../completionSound'
+import { remainingNoticeDays } from '../hooks/useNotices'
 
 const COMPLETION_DURATION = 340
 const COMPLETION_STAGGER = 70
@@ -47,9 +48,10 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   const {
     error, setError, loading, completedOpen, setCompletedOpen,
     completionSound, completionSoundStyle, taskDraftOpen, newTitle, setNewTitle, suggestions,
+    notices, today,
   } = ui
   const completed = completedTasks.length
-  const remaining = pendingTasks.filter((task) => !task.is_divider).length
+  const activeNotices = notices.filter((notice) => remainingNoticeDays(notice.expires_on, today) > 0)
 
   async function completeTask(task) {
     const family = [task, ...(childrenByParent.get(task.id) ?? [])]
@@ -68,7 +70,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   return (
       <Stack spacing={3}>
         <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 64 }}>
-          <Stack spacing={0.4} sx={{ alignItems: 'center' }}>
+          <Stack spacing={0.4} sx={{ minWidth: 0, maxWidth: 'calc(100% - 84px)', alignItems: 'center' }}>
             <Typography
               variant="h2"
               sx={{
@@ -80,9 +82,16 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
             >
               Tasks
             </Typography>
-            <Typography sx={{ color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400 }}>
-              {remaining} remaining&nbsp; · &nbsp;{completed} completed
-            </Typography>
+            {activeNotices.map((notice) => {
+              const daysLeft = remainingNoticeDays(notice.expires_on, today)
+              return (
+                <Typography component="div" key={notice.id} sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center', overflowWrap: 'anywhere' }}>
+                  <bdi dir="auto">{notice.title}</bdi>
+                  <span aria-hidden="true">·</span>
+                  <span dir="ltr">{daysLeft} {daysLeft === 1 ? 'day' : 'days'} left</span>
+                </Typography>
+              )
+            })}
           </Stack>
           <Stack direction="row" spacing={0.5} sx={{ position: 'absolute', right: 0, alignItems: 'center' }}>
             <IconButton
@@ -217,7 +226,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
             {loading ? (
               <Box sx={{ display: 'grid', placeItems: 'center', py: 7 }}><CircularProgress size={30} /></Box>
             ) : pendingTasks.length === 0 && !taskDraftOpen ? (
-              <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary' }}>
+              <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary', WebkitUserSelect: 'none', userSelect: 'none' }}>
                 <CheckCircleOutlineRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
                 <Typography>Nothing planned for this day.</Typography>
               </Stack>
