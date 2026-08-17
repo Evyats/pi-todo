@@ -10,6 +10,8 @@ import IconButton from '@mui/material/IconButton'
 import LinearProgress from '@mui/material/LinearProgress'
 import List from '@mui/material/List'
 import ListItem from '@mui/material/ListItem'
+import Modal from '@mui/material/Modal'
+import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
@@ -20,6 +22,7 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
   const [editingId, setEditingId] = useState(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [editingMinutes, setEditingMinutes] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   async function addSuggestion(event) {
     event.preventDefault()
@@ -30,8 +33,12 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
   }
 
   async function saveSuggestion(event) {
-    event.preventDefault()
+    event?.preventDefault()
+    const valid = editingTitle.trim() && (editingMinutes === '' || (editingMinutes >= 1 && editingMinutes <= 120))
+    if (!valid || savingEdit) return
+    setSavingEdit(true)
     if (await onUpdate(editingId, editingTitle, editingMinutes)) setEditingId(null)
+    setSavingEdit(false)
   }
 
   return (
@@ -67,50 +74,27 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
           <List disablePadding>
             {templates.map((template, index) => (
               <ListItem key={template.id} disableGutters divider sx={{ gap: 1, '&:last-child': { borderBottom: 0 } }}>
-                {editingId === template.id ? (
-                  <Box component="form" onSubmit={saveSuggestion} sx={{ display: 'flex', flex: 1, gap: 1 }}>
-                    <TextField
-                      autoFocus
-                      fullWidth
-                      size="small"
-                      value={editingTitle}
-                      slotProps={{ htmlInput: { maxLength: 300 } }}
-                      onChange={(event) => setEditingTitle(event.target.value)}
-                    />
-                    <TextField
-                      type="number"
-                      size="small"
-                      label="Minutes"
-                      value={editingMinutes}
-                      slotProps={{ htmlInput: { min: 1, max: 120 } }}
-                      onChange={(event) => setEditingMinutes(event.target.value === '' ? '' : Number(event.target.value))}
-                      sx={{ width: 105, flexShrink: 0 }}
-                    />
-                    <Button type="submit" disabled={!editingTitle.trim() || (editingMinutes !== '' && (editingMinutes < 1 || editingMinutes > 120))}>Save</Button>
+                <Button
+                  color="inherit"
+                  onClick={() => {
+                    setEditingId(template.id)
+                    setEditingTitle(template.title)
+                    setEditingMinutes(template.estimated_minutes ?? '')
+                  }}
+                  sx={{ flex: 1, justifyContent: 'flex-start', textTransform: 'none' }}
+                >
+                  <Box sx={{ width: '100%', textAlign: 'left' }}>
+                    {template.title}
+                    {template.estimated_minutes && (
+                      <LinearProgress
+                        variant="determinate"
+                        value={(template.estimated_minutes / 120) * 100}
+                        aria-label={`${template.estimated_minutes} minute estimate`}
+                        sx={{ height: 5, mt: 0.75, borderRadius: 99 }}
+                      />
+                    )}
                   </Box>
-                ) : (
-                  <Button
-                    color="inherit"
-                    onClick={() => {
-                      setEditingId(template.id)
-                      setEditingTitle(template.title)
-                      setEditingMinutes(template.estimated_minutes ?? '')
-                    }}
-                    sx={{ flex: 1, justifyContent: 'flex-start', textTransform: 'none' }}
-                  >
-                    <Box sx={{ width: '100%', textAlign: 'left' }}>
-                      {template.title}
-                      {template.estimated_minutes && (
-                        <LinearProgress
-                          variant="determinate"
-                          value={(template.estimated_minutes / 120) * 100}
-                          aria-label={`${template.estimated_minutes} minute estimate`}
-                          sx={{ height: 5, mt: 0.75, borderRadius: 99 }}
-                        />
-                      )}
-                    </Box>
-                  </Button>
-                )}
+                </Button>
                 {onMove && (
                   <Stack direction="row" spacing={0}>
                     <IconButton disabled={index === 0} aria-label={`Move ${template.title} up`} onClick={() => onMove(template.id, -1)}><KeyboardArrowUpRoundedIcon /></IconButton>
@@ -128,6 +112,68 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
             ))}
           </List>
         )}
+
+        <Modal
+          open={editingId !== null}
+          onClose={(_, reason) => {
+            if (reason === 'backdropClick') saveSuggestion()
+          }}
+          aria-labelledby="template-editor-title"
+        >
+          <Paper
+            component="form"
+            onSubmit={saveSuggestion}
+            elevation={8}
+            sx={{
+              position: 'fixed',
+              top: { xs: 'max(16px, env(safe-area-inset-top))', sm: '50%' },
+              left: '50%',
+              width: 'min(520px, calc(100vw - 24px))',
+              maxHeight: 'calc(100dvh - 32px)',
+              overflowY: 'auto',
+              transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
+              p: { xs: 2, sm: 2.5 },
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 2,
+            }}
+          >
+            <Typography id="template-editor-title" variant="h6" sx={{ mb: 1.5, fontWeight: 700 }}>
+              Edit task
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              multiline
+              minRows={3}
+              maxRows={7}
+              label="Task text"
+              value={editingTitle}
+              slotProps={{ htmlInput: { maxLength: 300 } }}
+              onChange={(event) => setEditingTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  saveSuggestion()
+                }
+              }}
+            />
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mt: 1.5 }}>
+              <TextField
+                type="number"
+                size="small"
+                label="Minutes"
+                value={editingMinutes}
+                slotProps={{ htmlInput: { min: 1, max: 120 } }}
+                onChange={(event) => setEditingMinutes(event.target.value === '' ? '' : Number(event.target.value))}
+                sx={{ width: 120 }}
+              />
+              <Button type="submit" variant="contained" disabled={savingEdit || !editingTitle.trim() || (editingMinutes !== '' && (editingMinutes < 1 || editingMinutes > 120))} sx={{ ml: 'auto !important' }}>
+                Save
+              </Button>
+            </Stack>
+          </Paper>
+        </Modal>
     </Box>
   )
 }
