@@ -1,6 +1,7 @@
 export const TASKS_API = '/todo/api/tasks'
 export const SUGGESTIONS_API = '/todo/api/suggestions'
 export const RECURRING_API = '/todo/api/recurring-tasks'
+export const NOTICES_API = '/todo/api/notices'
 
 export async function request(url, options) {
   const response = await fetch(url, options)

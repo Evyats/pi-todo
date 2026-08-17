@@ -8,7 +8,7 @@ export function useCompletionPreferences() {
   const [enabled, setEnabled] = useState(() => localStorage.getItem(ENABLED_KEY) !== 'false')
   const [style, setStyle] = useState(() => {
     const saved = localStorage.getItem(STYLE_KEY)
-    return SOUND_OPTION_VALUES.has(saved) ? saved : 'glass-clink'
+    return SOUND_OPTION_VALUES.has(saved) ? saved : 'coin-pickup'
   })
 
   useEffect(() => localStorage.setItem(ENABLED_KEY, String(enabled)), [enabled])

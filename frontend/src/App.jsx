@@ -11,10 +11,11 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable'
 import Container from '@mui/material/Container'
-import { request, RECURRING_API, SUGGESTIONS_API, TASKS_API as API } from './api'
+import { NOTICES_API, request, RECURRING_API, SUGGESTIONS_API, TASKS_API as API } from './api'
 import { dateKey, upcomingDays } from './dates'
 import { useCompletionPreferences } from './hooks/useCompletionPreferences'
 import { useDaySwipe } from './hooks/useDaySwipe'
+import { useNotices } from './hooks/useNotices'
 import { useTemplates } from './hooks/useTemplates'
 import { SettingsScreen } from './components/SettingsScreen'
 import { TasksScreen } from './components/TasksScreen'
@@ -74,6 +75,7 @@ export default function App({ mode, onToggleMode }) {
       request(`${API}?scheduled_date=${today}`).then(updateSelectedDayTasks).catch((err) => setError(err.message))
     }
   }, true)
+  const noticesStore = useNotices(NOTICES_API, setError, today)
   const suggestions = suggestionsStore.items
 
   useEffect(() => {
@@ -149,6 +151,22 @@ export default function App({ mode, onToggleMode }) {
   function openTaskDraft() {
     setTaskDraftOpen(true)
   }
+
+  useEffect(() => {
+    function handleEnterToAdd(event) {
+      if (event.key !== 'Enter' || event.repeat || event.isComposing || event.defaultPrevented) return
+      if (screen !== 'tasks' || taskDraftOpen || event.ctrlKey || event.metaKey || event.altKey) return
+      const target = event.target
+      if (target instanceof HTMLElement && (
+        target.isContentEditable
+        || target.closest('input, textarea, select, button, [role="dialog"]')
+      )) return
+      event.preventDefault()
+      setTaskDraftOpen(true)
+    }
+    window.addEventListener('keydown', handleEnterToAdd)
+    return () => window.removeEventListener('keydown', handleEnterToAdd)
+  }, [screen, taskDraftOpen])
 
   function cancelTaskDraft() {
     setNewTitle('')
@@ -548,6 +566,7 @@ export default function App({ mode, onToggleMode }) {
           onCompletionSoundStyleChange={setCompletionSoundStyle}
           suggestionsStore={suggestionsStore}
           recurringStore={recurringStore}
+          noticesStore={noticesStore}
         />
       ) : (
       <TasksScreen
@@ -569,6 +588,7 @@ export default function App({ mode, onToggleMode }) {
         ui={{
           error, setError, loading, completedOpen, setCompletedOpen,
           completionSound, completionSoundStyle, taskDraftOpen, newTitle, setNewTitle, suggestions,
+          notices: noticesStore.items, today,
         }}
       />
       )}

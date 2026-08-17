@@ -13,13 +13,13 @@ import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
 import Typography from '@mui/material/Typography'
 import { SOUND_OPTIONS, playCompletionSound } from '../completionSound'
-import { SettingsSection, TemplatesManager } from './SettingsComponents'
+import { NoticesManager, SettingsSection, TemplatesManager } from './SettingsComponents'
 
 export function SettingsScreen({
   mode, onToggleMode, onClose, section, onSectionChange,
   completionSound, onCompletionSoundChange,
   completionSoundStyle, onCompletionSoundStyleChange,
-  suggestionsStore, recurringStore,
+  suggestionsStore, recurringStore, noticesStore,
 }) {
   const toggleSection = (value) => onSectionChange(section === value ? null : value)
   return (
@@ -70,6 +70,9 @@ export function SettingsScreen({
         </SettingsSection>
         <SettingsSection title="Recurring tasks" expanded={section === 'recurring'} onToggle={() => toggleSection('recurring')}>
           <TemplatesManager emptyText="No recurring tasks yet." templates={recurringStore.items} onAdd={recurringStore.add} onUpdate={recurringStore.update} onDelete={recurringStore.remove} onMove={recurringStore.move} />
+        </SettingsSection>
+        <SettingsSection title="Notices" expanded={section === 'notices'} onToggle={() => toggleSection('notices')}>
+          <NoticesManager notices={noticesStore.items} onAdd={noticesStore.add} onUpdate={noticesStore.update} onDelete={noticesStore.remove} onMove={noticesStore.move} />
         </SettingsSection>
       </Paper>
     </Stack>
