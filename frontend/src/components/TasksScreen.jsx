@@ -88,7 +88,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                 <Typography component="div" key={notice.id} sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center', overflowWrap: 'anywhere' }}>
                   <bdi dir="auto">{notice.title}</bdi>
                   <span aria-hidden="true">·</span>
-                  <span dir="ltr">{daysLeft} {daysLeft === 1 ? 'day' : 'days'} left</span>
+                  <span dir="ltr">{daysLeft}</span>
                 </Typography>
               )
             })}
