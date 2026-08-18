@@ -22,52 +22,53 @@ export function DayTab({ day, selected, celebrating, onSelect }) {
   const { isOver, setNodeRef } = useDroppable({ id: `day:${day.key}` })
 
   return (
-    <Button
-      ref={setNodeRef}
-      onClick={() => onSelect(day.key)}
-      aria-pressed={selected}
-      sx={{
-        minWidth: 0,
-        flex: 1,
-        position: 'relative',
-        zIndex: 1,
-        height: { xs: 48, sm: 52 },
-        py: 0.5,
-        borderRadius: 2.5,
-        color: selected ? 'primary.contrastText' : 'text.secondary',
-        bgcolor: isOver ? 'action.hover' : 'transparent',
-        boxShadow: 0,
-        transition: 'background-color 120ms ease, box-shadow 120ms ease',
-        '@media (hover: hover) and (pointer: fine)': {
-          '&:hover': {
-            bgcolor: 'action.hover',
+    <Box ref={setNodeRef} sx={{ minWidth: 0, flex: 1, position: 'relative', height: { xs: 48, sm: 52 } }}>
+      <Button
+        onClick={() => onSelect(day.key)}
+        aria-pressed={selected}
+        sx={{
+          position: 'absolute',
+          inset: { xs: '0 14px', sm: '0 18px' },
+          zIndex: 1,
+          minWidth: 0,
+          width: 'auto',
+          height: 'auto',
+          borderRadius: { xs: 2.75, sm: 3 },
+          color: selected ? 'primary.contrastText' : 'text.secondary',
+          bgcolor: isOver ? 'action.hover' : 'transparent',
+          boxShadow: 0,
+          transition: 'background-color 120ms ease, box-shadow 120ms ease',
+          '@media (hover: hover) and (pointer: fine)': {
+            '&:hover': {
+              bgcolor: 'action.hover',
+            },
           },
-        },
-      }}
-    >
-      {celebrating && (
-        <Box
-          aria-hidden
-          sx={{
-            position: 'absolute',
-            inset: 2,
-            border: 2,
-            borderColor: 'primary.light',
-            borderRadius: 2,
-            pointerEvents: 'none',
-            animation: `${dayDropRipple} 380ms cubic-bezier(0.16, 1, 0.3, 1) forwards`,
-          }}
-        />
-      )}
-      <Stack spacing={0.35} sx={{ alignItems: 'center' }}>
-        <Typography component="span" variant="caption" sx={{ fontSize: { xs: 11, sm: 12 }, fontWeight: 700, lineHeight: 1.15, letterSpacing: '.02em' }}>
-          {day.weekday}
-        </Typography>
-        <Typography component="span" sx={{ fontSize: { xs: 15, sm: 17 }, fontWeight: 700, lineHeight: 1.15 }}>
-          {day.day}
-        </Typography>
-      </Stack>
-    </Button>
+        }}
+      >
+        {celebrating && (
+          <Box
+            aria-hidden
+            sx={{
+              position: 'absolute',
+              inset: 2,
+              border: 2,
+              borderColor: 'primary.light',
+              borderRadius: 2,
+              pointerEvents: 'none',
+              animation: `${dayDropRipple} 380ms cubic-bezier(0.16, 1, 0.3, 1) forwards`,
+            }}
+          />
+        )}
+        <Stack spacing={0.35} sx={{ alignItems: 'center' }}>
+          <Typography component="span" variant="caption" sx={{ fontSize: { xs: 11, sm: 12 }, fontWeight: 700, lineHeight: 1.15, letterSpacing: '.02em' }}>
+            {day.weekday}
+          </Typography>
+          <Typography component="span" sx={{ fontSize: { xs: 15, sm: 17 }, fontWeight: 700, lineHeight: 1.15 }}>
+            {day.day}
+          </Typography>
+        </Stack>
+      </Button>
+    </Box>
   )
 }
 

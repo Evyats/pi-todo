@@ -24,23 +24,27 @@ export function SettingsScreen({
   const toggleSection = (value) => onSectionChange(section === value ? null : value)
   return (
     <Stack spacing={3}>
-      <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 44 }}>
-        <Stack spacing={0.4} sx={{ alignItems: 'center' }}>
-          <Typography variant="h2" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}>
+      <Stack spacing={0.75}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 34 }}>
+          <Box aria-hidden sx={{ width: 34, flexShrink: 0 }} />
+          <Typography
+            variant="h2"
+            sx={{ flex: 1, minWidth: 0, textAlign: 'center', fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}
+          >
             Settings
           </Typography>
-          <Typography sx={{ color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400 }}>
-            Some settings are device-specific
-          </Typography>
-        </Stack>
-        <IconButton
-          aria-label="Back to tasks"
-          onClick={onClose}
-          sx={{ position: 'absolute', right: 0, width: 34, height: 34, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}
-        >
-          <ArrowBackRoundedIcon />
-        </IconButton>
-      </Box>
+          <IconButton
+            aria-label="Back to tasks"
+            onClick={onClose}
+            sx={{ width: 34, height: 34, flexShrink: 0, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}
+          >
+            <ArrowBackRoundedIcon />
+          </IconButton>
+        </Box>
+        <Typography sx={{ color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center' }}>
+          Some settings are device-specific
+        </Typography>
+      </Stack>
 
       <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
         <Button color="inherit" fullWidth onClick={onToggleMode} sx={{ justifyContent: 'space-between', px: 2, py: 1.5, borderRadius: 0, fontSize: 15, fontWeight: 500, textTransform: 'none' }}>

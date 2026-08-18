@@ -65,7 +65,7 @@ class DividerCreate(BaseModel):
 
 class SuggestionCreate(BaseModel):
     title: str
-    estimated_minutes: int | None = Field(default=None, ge=1, le=120)
+    estimated_minutes: int | None = Field(default=None, ge=1, le=90)
 
     @field_validator("title")
     @classmethod

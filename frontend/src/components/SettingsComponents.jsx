@@ -36,7 +36,7 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
 
   async function saveSuggestion(event) {
     event?.preventDefault()
-    const valid = editingTitle.trim() && (editingMinutes === '' || (editingMinutes >= 1 && editingMinutes <= 120))
+    const valid = editingTitle.trim() && (editingMinutes === '' || (editingMinutes >= 1 && editingMinutes <= 90))
     if (!valid || savingEdit) return
     setSavingEdit(true)
     if (await onUpdate(editingId, editingTitle, editingMinutes)) setEditingId(null)
@@ -59,11 +59,11 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
             size="small"
             label="Minutes"
             value={newMinutes}
-            slotProps={{ htmlInput: { min: 1, max: 120 } }}
+            slotProps={{ htmlInput: { min: 1, max: 90 } }}
             onChange={(event) => setNewMinutes(event.target.value === '' ? '' : Number(event.target.value))}
             sx={{ width: 105, flexShrink: 0 }}
           />
-          <Button type="submit" variant="contained" disabled={!newTitle.trim() || (newMinutes !== '' && (newMinutes < 1 || newMinutes > 120))} aria-label="Add suggestion">
+          <Button type="submit" variant="contained" disabled={!newTitle.trim() || (newMinutes !== '' && (newMinutes < 1 || newMinutes > 90))} aria-label="Add suggestion">
             +
           </Button>
         </Stack>
@@ -90,7 +90,7 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
                     {template.estimated_minutes && (
                       <LinearProgress
                         variant="determinate"
-                        value={(template.estimated_minutes / 120) * 100}
+                        value={(template.estimated_minutes / 90) * 100}
                         aria-label={`${template.estimated_minutes} minute estimate`}
                         sx={{ height: 5, mt: 0.75, borderRadius: 99 }}
                       />
@@ -166,11 +166,11 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
                 size="small"
                 label="Minutes"
                 value={editingMinutes}
-                slotProps={{ htmlInput: { min: 1, max: 120 } }}
+                slotProps={{ htmlInput: { min: 1, max: 90 } }}
                 onChange={(event) => setEditingMinutes(event.target.value === '' ? '' : Number(event.target.value))}
                 sx={{ width: 120 }}
               />
-              <Button type="submit" variant="contained" disabled={savingEdit || !editingTitle.trim() || (editingMinutes !== '' && (editingMinutes < 1 || editingMinutes > 120))} sx={{ ml: 'auto !important' }}>
+              <Button type="submit" variant="contained" disabled={savingEdit || !editingTitle.trim() || (editingMinutes !== '' && (editingMinutes < 1 || editingMinutes > 90))} sx={{ ml: 'auto !important' }}>
                 Save
               </Button>
             </Stack>

@@ -13,9 +13,9 @@ class ModelValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             TaskCreate(title="   ")
 
-    def test_estimate_must_be_between_one_and_120_minutes(self) -> None:
+    def test_estimate_must_be_between_one_and_90_minutes(self) -> None:
         with self.assertRaises(ValidationError):
-            SuggestionCreate(title="Exercise", estimated_minutes=121)
+            SuggestionCreate(title="Exercise", estimated_minutes=91)
 
     def test_notice_duration_must_be_between_one_and_365_days(self) -> None:
         with self.assertRaises(ValidationError):
