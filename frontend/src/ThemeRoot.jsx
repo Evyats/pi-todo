@@ -27,8 +27,6 @@ export default function ThemeRoot() {
         styleOverrides: {
           body: mode === 'dark' ? {
             backgroundColor: '#0b0d12',
-            backgroundImage: 'radial-gradient(circle at 48% 8%, rgba(44, 54, 78, .16), transparent 28%), radial-gradient(circle at 85% 45%, rgba(30, 48, 83, .08), transparent 34%)',
-            backgroundAttachment: 'fixed',
           } : {},
         },
       },

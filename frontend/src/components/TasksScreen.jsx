@@ -32,7 +32,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
     tasks, tasksByDate, pendingTasks, mainTasks, completedTasks, childrenByParent,
   } = data
   const {
-    days, indicatorPosition, swipeAnimating, weekStartIndex, celebratingDay,
+    days, indicatorPosition, swipeAnimating, weekStartIndex, weekendStartIndex, celebratingDay,
     selectDate, swipePagerRef, daySwipeHandlers, swipeX, previousDate, nextDate,
     openCompletedForDate,
   } = navigation
@@ -69,11 +69,15 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   }
   return (
       <Stack spacing={3}>
-        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 64 }}>
-          <Stack spacing={0.4} sx={{ minWidth: 0, maxWidth: 'calc(100% - 84px)', alignItems: 'center' }}>
+        <Stack spacing={0.75}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 34 }}>
+            <Box aria-hidden sx={{ width: 34, flexShrink: 0 }} />
             <Typography
               variant="h2"
               sx={{
+                flex: 1,
+                minWidth: 0,
+                textAlign: 'center',
                 fontFamily: '"Space Grotesk", sans-serif',
                 fontSize: { xs: 23, sm: 27 },
                 fontWeight: 800,
@@ -82,28 +86,30 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
             >
               Tasks
             </Typography>
-            {activeNotices.map((notice) => {
-              const daysLeft = remainingNoticeDays(notice.expires_on, today)
-              return (
-                <Typography component="div" key={notice.id} sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center', overflowWrap: 'anywhere' }}>
-                  <bdi dir="auto">{notice.title}</bdi>
-                  <span aria-hidden="true">·</span>
-                  <span dir="ltr">{daysLeft}</span>
-                </Typography>
-              )
-            })}
-          </Stack>
-          <Stack direction="row" spacing={0.5} sx={{ position: 'absolute', right: 0, alignItems: 'center' }}>
             <IconButton
               color="inherit"
               onClick={openSettings}
               aria-label="Open settings"
-              sx={{ width: 34, height: 34, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}
+              sx={{ width: 34, height: 34, flexShrink: 0, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}
             >
               <SettingsOutlinedIcon />
             </IconButton>
-          </Stack>
-        </Box>
+          </Box>
+          {activeNotices.length > 0 && (
+            <Stack spacing={0.4} sx={{ alignItems: 'center' }}>
+              {activeNotices.map((notice) => {
+                const daysLeft = remainingNoticeDays(notice.expires_on, today)
+                return (
+                  <Typography component="div" key={notice.id} sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center', overflowWrap: 'anywhere' }}>
+                    <bdi dir="auto">{notice.title}</bdi>
+                    <span aria-hidden="true">·</span>
+                    <span dir="ltr">{daysLeft}</span>
+                  </Typography>
+                )
+              })}
+            </Stack>
+          )}
+        </Stack>
 
         <DndContext
           sensors={sensors}
@@ -139,7 +145,41 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           onDragEnd={handleDragEnd}
         >
           <Stack spacing={3}>
-            <Box sx={{ position: 'sticky', zIndex: 9, top: 0, display: 'flex', minHeight: { xs: 48, sm: 52 }, py: 0.5, bgcolor: 'background.default' }}>
+            <Box
+              sx={{
+                position: 'sticky',
+                zIndex: 9,
+                top: 0,
+                display: 'flex',
+                minHeight: { xs: 48, sm: 52 },
+                py: 0.5,
+                bgcolor: 'background.default',
+              }}
+            >
+              <Box
+                aria-hidden
+                sx={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: '100%',
+                  height: { xs: 16, sm: 20 },
+                  pointerEvents: 'none',
+                  backgroundImage: (theme) => `linear-gradient(to top, ${theme.palette.background.default}, transparent)`,
+                }}
+              />
+              <Box
+                aria-hidden
+                sx={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: '100%',
+                  height: { xs: 16, sm: 20 },
+                  pointerEvents: 'none',
+                  backgroundImage: (theme) => `linear-gradient(to bottom, ${theme.palette.background.default}, transparent)`,
+                }}
+              />
               <Box
                 sx={{
                   position: 'absolute',
@@ -156,7 +196,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                     borderRadius: { xs: 2.75, sm: 3 },
                     bgcolor: 'primary.main',
                     backgroundImage: 'linear-gradient(145deg, #4b88ff, #225eff)',
-                    boxShadow: '0 10px 28px rgba(35, 99, 255, .28)',
+                    boxShadow: '0 0 28px rgba(35, 99, 255, .4)',
                   }}
                 />
               </Box>
@@ -169,6 +209,22 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                     top: 15,
                     bottom: 15,
                     left: `calc(${weekStartIndex * 20}% - 1px)`,
+                    width: 2,
+                    borderRadius: 1,
+                    bgcolor: 'divider',
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+              {weekendStartIndex > 0 && (
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: 'absolute',
+                    zIndex: 2,
+                    top: 15,
+                    bottom: 15,
+                    left: `calc(${weekendStartIndex * 20}% - 1px)`,
                     width: 2,
                     borderRadius: 1,
                     bgcolor: 'divider',
@@ -375,7 +431,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
               height: 64,
               bgcolor: '#3478ff',
               backgroundImage: 'linear-gradient(145deg, #4b88ff, #225eff)',
-              boxShadow: '0 12px 30px rgba(35, 99, 255, .32)',
+              boxShadow: '0 0 30px rgba(35, 99, 255, .32)',
               '&:hover': { bgcolor: '#2868ee' },
             }}
           >

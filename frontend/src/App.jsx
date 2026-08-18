@@ -547,6 +547,7 @@ export default function App({ mode, onToggleMode }) {
     Math.min(days.length - 1, selectedDayIndex - (swipeX / pagerWidth)),
   )
   const weekStartIndex = days.findIndex((day, index) => index > 0 && day.weekdayIndex === 0)
+  const weekendStartIndex = days.findIndex((day, index) => index > 0 && day.weekdayIndex === 5)
 
   return (
     <Container
@@ -572,7 +573,7 @@ export default function App({ mode, onToggleMode }) {
       <TasksScreen
         data={{ tasks, tasksByDate, pendingTasks, mainTasks, completedTasks, childrenByParent }}
         navigation={{
-          days, indicatorPosition, swipeAnimating, weekStartIndex, celebratingDay,
+          days, indicatorPosition, swipeAnimating, weekStartIndex, weekendStartIndex, celebratingDay,
           selectDate, swipePagerRef, daySwipeHandlers, swipeX, previousDate, nextDate,
           openCompletedForDate,
         }}
