@@ -5,8 +5,8 @@ from datetime import date
 from pathlib import Path
 
 from app.database import get_connection, initialize_database
-from app.main import list_tasks, set_task_parent, update_task
-from app.models import TaskParent, TaskUpdate
+from app.main import list_tasks, schedule_task, set_task_parent, update_task
+from app.models import TaskParent, TaskSchedule, TaskUpdate
 
 
 class TaskUpdateTests(unittest.TestCase):
@@ -115,6 +115,34 @@ class TaskUpdateTests(unittest.TestCase):
 
         pending = [task.title for task in list_tasks(date.today()) if not task.completed]
         self.assertEqual(pending, ["Before", "Parent", "Child", "After"])
+
+    def test_archives_and_reschedules_a_task_family(self) -> None:
+        today = date.today().isoformat()
+        with get_connection() as connection:
+            parent_id = connection.execute(
+                "INSERT INTO tasks (title, sort_order, scheduled_date) VALUES ('Parent', 0, ?)",
+                (today,),
+            ).lastrowid
+            connection.execute(
+                """
+                INSERT INTO tasks (title, sort_order, scheduled_date, parent_task_id)
+                VALUES ('Child', 0, ?, ?)
+                """,
+                (today, parent_id),
+            )
+
+        schedule_task(parent_id, TaskSchedule(scheduled_date=None))
+        archived = list_tasks(None, None, None, True)
+
+        self.assertEqual({task.title for task in archived}, {"Parent", "Child"})
+        self.assertTrue(all(task.scheduled_date is None for task in archived))
+
+        target = date(2099, 1, 2)
+        schedule_task(parent_id, TaskSchedule(scheduled_date=target))
+        moved = list_tasks(scheduled_date=target)
+
+        self.assertEqual({task.title for task in moved}, {"Parent", "Child"})
+        self.assertEqual(next(task for task in moved if task.title == "Child").parent_task_id, parent_id)
 
 
 if __name__ == "__main__":

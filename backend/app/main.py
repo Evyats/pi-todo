@@ -340,6 +340,7 @@ def list_tasks(
     scheduled_date: Annotated[date | None, Query()] = None,
     start_date: Annotated[date | None, Query()] = None,
     end_date: Annotated[date | None, Query()] = None,
+    archived: Annotated[bool, Query()] = False,
 ) -> list[Task]:
     if (start_date is None) != (end_date is None):
         raise HTTPException(
@@ -353,6 +354,17 @@ def list_tasks(
     today = date.today().isoformat()
     with get_connection() as connection:
         carry_over_incomplete_tasks(connection)
+        if archived:
+            rows = connection.execute(
+                """
+                SELECT id, title, completed, created_at, scheduled_date,
+                       estimated_minutes, recurring_task_id, parent_task_id, is_divider
+                FROM tasks
+                WHERE scheduled_date IS NULL
+                ORDER BY sort_order ASC, id DESC
+                """
+            ).fetchall()
+            return [Task(**dict(row)) for row in rows]
         if range_start <= today <= range_end:
             create_today_recurring_tasks(connection)
         rows = connection.execute(
@@ -430,10 +442,13 @@ def reorder_tasks(payload: TaskOrder) -> Response:
         existing_rows = connection.execute(
                 """
                 SELECT id FROM tasks
-                WHERE scheduled_date = ? AND parent_task_id IS ? AND completed = 0
+                WHERE scheduled_date IS ? AND parent_task_id IS ? AND completed = 0
                 ORDER BY sort_order, id
                 """,
-                (payload.scheduled_date.isoformat(), payload.parent_task_id),
+                (
+                    payload.scheduled_date.isoformat() if payload.scheduled_date else None,
+                    payload.parent_task_id,
+                ),
             ).fetchall()
         existing_ids = [row[0] for row in existing_rows]
         if not set(payload.task_ids).issubset(existing_ids):
@@ -505,7 +520,7 @@ def set_task_parent(task_id: int, payload: TaskParent) -> Task:
                 for row in connection.execute(
                     """
                     SELECT id FROM tasks
-                    WHERE scheduled_date = ? AND parent_task_id IS NULL AND completed = 0
+                    WHERE scheduled_date IS ? AND parent_task_id IS NULL AND completed = 0
                     ORDER BY sort_order, id
                     """,
                     (task["scheduled_date"],),
@@ -528,7 +543,7 @@ def set_task_parent(task_id: int, payload: TaskParent) -> Task:
             next_order = connection.execute(
                 """
                 SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks
-                WHERE scheduled_date = ? AND parent_task_id IS ?
+                WHERE scheduled_date IS ? AND parent_task_id IS ?
                 """,
                 (task["scheduled_date"], payload.parent_task_id),
             ).fetchone()[0]
@@ -552,7 +567,7 @@ def delete_completed_tasks(scheduled_date: date | None = Query(default=None)) ->
 
 @app.put(f"{API_PREFIX}/tasks/{{task_id}}/schedule", response_model=Task)
 def schedule_task(task_id: int, payload: TaskSchedule) -> Task:
-    target_date = payload.scheduled_date.isoformat()
+    target_date = payload.scheduled_date.isoformat() if payload.scheduled_date else None
     with get_connection() as connection:
         task = connection.execute(
             """
@@ -581,7 +596,7 @@ def schedule_task(task_id: int, payload: TaskSchedule) -> Task:
                 detail="A parent with recurring subtasks cannot be moved to another day",
             )
         next_order = connection.execute(
-            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date = ?",
+            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date IS ?",
             (target_date,),
         ).fetchone()[0]
         cursor = connection.execute(
@@ -617,7 +632,7 @@ def update_task(task_id: int, payload: TaskUpdate) -> Task:
             updates["sort_order"] = connection.execute(
                 """
                 SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks
-                WHERE scheduled_date = ? AND completed = 1 AND id != ?
+                WHERE scheduled_date IS ? AND completed = 1 AND id != ?
                 """,
                 (task_date["scheduled_date"], task_id),
             ).fetchone()[0]
@@ -630,7 +645,7 @@ def update_task(task_id: int, payload: TaskUpdate) -> Task:
             updates["sort_order"] = connection.execute(
                 """
                 SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks
-                WHERE scheduled_date = ? AND completed = 0
+                WHERE scheduled_date IS ? AND completed = 0
                   AND parent_task_id IS NULL AND id != ?
                 """,
                 (task_date["scheduled_date"], task_id),
