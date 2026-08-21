@@ -37,7 +37,7 @@ class Task(BaseModel):
     title: str
     completed: bool
     created_at: str
-    scheduled_date: date
+    scheduled_date: date | None
     estimated_minutes: int | None
     recurring_task_id: int | None
     parent_task_id: int | None
@@ -46,12 +46,12 @@ class Task(BaseModel):
 
 class TaskOrder(BaseModel):
     task_ids: list[int]
-    scheduled_date: date
+    scheduled_date: date | None
     parent_task_id: int | None = None
 
 
 class TaskSchedule(BaseModel):
-    scheduled_date: date
+    scheduled_date: date | None
 
 
 class TaskParent(BaseModel):

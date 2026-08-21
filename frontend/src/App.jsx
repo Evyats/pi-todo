@@ -28,6 +28,8 @@ export default function App({ mode, onToggleMode }) {
   const [today, setToday] = useState(() => dateKey())
   const [selectedDate, setSelectedDate] = useState(() => dateKey())
   const [tasksByDate, setTasksByDate] = useState({})
+  const [archivedTasks, setArchivedTasks] = useState([])
+  const [archiveOpen, setArchiveOpen] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -61,18 +63,25 @@ export default function App({ mode, onToggleMode }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
   const days = useMemo(() => upcomingDays(today), [today])
-  const tasks = tasksByDate[selectedDate] ?? EMPTY_TASKS
-  function updateSelectedDayTasks(value) {
+  const tasks = archiveOpen ? archivedTasks : (tasksByDate[selectedDate] ?? EMPTY_TASKS)
+  function updateTasksForDate(targetDate, value) {
     setTasksByDate((current) => {
-      const currentDay = current[selectedDate] ?? []
+      const currentDay = current[targetDate] ?? []
       const nextDay = typeof value === 'function' ? value(currentDay) : value
-      return { ...current, [selectedDate]: nextDay }
+      return { ...current, [targetDate]: nextDay }
     })
+  }
+  function updateSelectedDayTasks(value) {
+    if (archiveOpen) {
+      setArchivedTasks((current) => typeof value === 'function' ? value(current) : value)
+      return
+    }
+    updateTasksForDate(selectedDate, value)
   }
   const suggestionsStore = useTemplates(SUGGESTIONS_API, setError)
   const recurringStore = useTemplates(RECURRING_API, setError, () => {
     if (selectedDate === today) {
-      request(`${API}?scheduled_date=${today}`).then(updateSelectedDayTasks).catch((err) => setError(err.message))
+      request(`${API}?scheduled_date=${today}`).then((items) => updateTasksForDate(today, items)).catch((err) => setError(err.message))
     }
   }, true)
   const noticesStore = useNotices(NOTICES_API, setError, today)
@@ -112,9 +121,27 @@ export default function App({ mode, onToggleMode }) {
   }, [])
 
   function selectDate(value) {
-    if (value === selectedDate) return
+    if (value === selectedDate && !archiveOpen) return
+    setArchiveOpen(false)
     setSelectedDate(value)
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }
+
+  async function openArchive() {
+    setLoading(true)
+    setCompletedOpen(false)
+    cancelTaskDraft()
+    try {
+      const loadedTasks = await request(`${API}?archived=true`)
+      setArchivedTasks(loadedTasks)
+      setArchiveOpen(true)
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+      setError('')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   function openCompletedForDate(value) {
@@ -279,11 +306,12 @@ export default function App({ mode, onToggleMode }) {
     boundaryPositionRef.current = null
     dragStartTasksRef.current = null
     const overId = String(over?.id ?? '')
-    if (overId.startsWith('day:')) {
-      const targetDate = overId.slice(4)
-      if (targetDate === selectedDate) return
+    if (overId.startsWith('day:') || overId === 'archive') {
+      const movingToArchive = overId === 'archive'
+      const targetDate = movingToArchive ? null : overId.slice(4)
+      if ((movingToArchive && archiveOpen) || (!movingToArchive && !archiveOpen && targetDate === selectedDate)) return
       if (activeTask.recurring_task_id !== null) {
-        setError('Recurring tasks cannot be moved to another day')
+        setError(movingToArchive ? 'Recurring tasks cannot be archived' : 'Recurring tasks cannot be moved to another day')
         return
       }
       if (activeTask.is_divider) {
@@ -311,12 +339,16 @@ export default function App({ mode, onToggleMode }) {
             ? updatedParent
             : { ...task, scheduled_date: targetDate }
         ))
-        setTasksByDate((current) => ({
-          ...current,
-          [targetDate]: [...movedTasks, ...(current[targetDate] ?? [])],
-        }))
-        setCelebratingDay(targetDate)
-        window.setTimeout(() => setCelebratingDay(null), 340)
+        if (movingToArchive) {
+          setArchivedTasks((current) => [...movedTasks, ...current])
+        } else {
+          setTasksByDate((current) => ({
+            ...current,
+            [targetDate]: [...movedTasks, ...(current[targetDate] ?? [])],
+          }))
+          setCelebratingDay(targetDate)
+          window.setTimeout(() => setCelebratingDay(null), 340)
+        }
         setError('')
       } catch (err) {
         window.clearTimeout(collapseTimer)
@@ -334,7 +366,7 @@ export default function App({ mode, onToggleMode }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             task_ids: group.map((task) => task.id),
-            scheduled_date: selectedDate,
+            scheduled_date: archiveOpen ? null : selectedDate,
             parent_task_id: null,
           }),
         })
@@ -389,7 +421,7 @@ export default function App({ mode, onToggleMode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task_ids: reorderedGroup.map((task) => task.id),
-          scheduled_date: selectedDate,
+          scheduled_date: archiveOpen ? null : selectedDate,
           parent_task_id: activeTask.parent_task_id,
         }),
       })
@@ -540,8 +572,8 @@ export default function App({ mode, onToggleMode }) {
     childrenByParent,
   } = useMemo(() => organizeTasks(tasks), [tasks])
   const selectedDayIndex = days.findIndex((day) => day.key === selectedDate)
-  const previousDate = days[selectedDayIndex - 1]?.key ?? null
-  const nextDate = days[selectedDayIndex + 1]?.key ?? null
+  const previousDate = archiveOpen ? null : (days[selectedDayIndex - 1]?.key ?? null)
+  const nextDate = archiveOpen ? null : (days[selectedDayIndex + 1]?.key ?? null)
   const indicatorPosition = Math.max(
     0,
     Math.min(days.length - 1, selectedDayIndex - (swipeX / pagerWidth)),
@@ -575,7 +607,7 @@ export default function App({ mode, onToggleMode }) {
         navigation={{
           days, indicatorPosition, swipeAnimating, weekStartIndex, weekendStartIndex, celebratingDay,
           selectDate, swipePagerRef, daySwipeHandlers, swipeX, previousDate, nextDate,
-          openCompletedForDate,
+          openCompletedForDate, archiveOpen, openArchive,
         }}
         drag={{
           sensors, dragModeRef, setDragMode, pointerStartRef, boundaryPositionRef,

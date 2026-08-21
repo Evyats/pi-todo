@@ -2,6 +2,8 @@ import { closestCenter, pointerWithin } from '@dnd-kit/core'
 
 export function taskOrDayCollision(args, dragMode) {
   const collisionsUnderPointer = pointerWithin(args)
+  const archiveUnderPointer = collisionsUnderPointer.find((collision) => collision.id === 'archive')
+  if (archiveUnderPointer) return [archiveUnderPointer]
   const dayUnderPointer = collisionsUnderPointer.find((collision) =>
     String(collision.id).startsWith('day:'),
   )
@@ -27,6 +29,7 @@ export function taskOrDayCollision(args, dragMode) {
 
   const siblingContainers = args.droppableContainers.filter(
     (container) => !String(container.id).startsWith('day:')
+      && container.id !== 'archive'
       && container.data.current?.task?.parent_task_id
         === args.active.data.current?.task?.parent_task_id,
   )

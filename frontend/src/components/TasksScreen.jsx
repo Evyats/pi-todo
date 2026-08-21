@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { DndContext, DragOverlay } from '@dnd-kit/core'
+import { DndContext, DragOverlay, useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
@@ -26,6 +26,56 @@ import { remainingNoticeDays } from '../hooks/useNotices'
 const COMPLETION_DURATION = 340
 const COMPLETION_STAGGER = 70
 
+function ArchiveHeader({ active, notices, today, onOpen, onOpenSettings }) {
+  const { isOver, setNodeRef } = useDroppable({ id: 'archive' })
+
+  return (
+    <Stack spacing={0.75}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 48 }}>
+        <Box aria-hidden sx={{ width: 34, flexShrink: 0 }} />
+        <Button
+          ref={setNodeRef}
+          color="inherit"
+          onClick={onOpen}
+          aria-label="Open archived tasks"
+          aria-pressed={active}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: 48,
+            mx: -1,
+            px: 2,
+            borderRadius: 2,
+            color: 'text.primary',
+            bgcolor: isOver ? 'action.selected' : active ? 'action.hover' : 'transparent',
+            transition: 'background-color 120ms ease, box-shadow 120ms ease',
+            boxShadow: isOver ? 1 : 0,
+          }}
+        >
+          <Typography component="span" variant="h2" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}>
+            Tasks
+          </Typography>
+        </Button>
+        <IconButton color="inherit" onClick={onOpenSettings} aria-label="Open settings" sx={{ width: 34, height: 34, flexShrink: 0, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}>
+          <SettingsOutlinedIcon />
+        </IconButton>
+      </Box>
+      {notices.length > 0 && (
+        <Stack spacing={0.4} sx={{ alignItems: 'center' }}>
+          {notices.map((notice) => {
+            const daysLeft = remainingNoticeDays(notice.expires_on, today)
+            return (
+              <Typography component="div" key={notice.id} sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center', overflowWrap: 'anywhere' }}>
+                <bdi dir="auto">{notice.title}</bdi><span aria-hidden="true">·</span><span dir="ltr">{daysLeft}</span>
+              </Typography>
+            )
+          })}
+        </Stack>
+      )}
+    </Stack>
+  )
+}
+
 export function TasksScreen({ data, navigation, drag, actions, ui }) {
   const [completionWave, setCompletionWave] = useState(new Map())
   const {
@@ -34,7 +84,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   const {
     days, indicatorPosition, swipeAnimating, weekStartIndex, weekendStartIndex, celebratingDay,
     selectDate, swipePagerRef, daySwipeHandlers, swipeX, previousDate, nextDate,
-    openCompletedForDate,
+    openCompletedForDate, archiveOpen, openArchive,
   } = navigation
   const {
     sensors, dragModeRef, setDragMode, pointerStartRef, boundaryPositionRef,
@@ -69,48 +119,6 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   }
   return (
       <Stack spacing={3}>
-        <Stack spacing={0.75}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 34 }}>
-            <Box aria-hidden sx={{ width: 34, flexShrink: 0 }} />
-            <Typography
-              variant="h2"
-              sx={{
-                flex: 1,
-                minWidth: 0,
-                textAlign: 'center',
-                fontFamily: '"Space Grotesk", sans-serif',
-                fontSize: { xs: 23, sm: 27 },
-                fontWeight: 800,
-                letterSpacing: '-.045em',
-              }}
-            >
-              Tasks
-            </Typography>
-            <IconButton
-              color="inherit"
-              onClick={openSettings}
-              aria-label="Open settings"
-              sx={{ width: 34, height: 34, flexShrink: 0, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}
-            >
-              <SettingsOutlinedIcon />
-            </IconButton>
-          </Box>
-          {activeNotices.length > 0 && (
-            <Stack spacing={0.4} sx={{ alignItems: 'center' }}>
-              {activeNotices.map((notice) => {
-                const daysLeft = remainingNoticeDays(notice.expires_on, today)
-                return (
-                  <Typography component="div" key={notice.id} sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center', overflowWrap: 'anywhere' }}>
-                    <bdi dir="auto">{notice.title}</bdi>
-                    <span aria-hidden="true">·</span>
-                    <span dir="ltr">{daysLeft}</span>
-                  </Typography>
-                )
-              })}
-            </Stack>
-          )}
-        </Stack>
-
         <DndContext
           sensors={sensors}
           collisionDetection={(args) => taskOrDayCollision(args, dragModeRef.current)}
@@ -144,6 +152,13 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           }}
           onDragEnd={handleDragEnd}
         >
+          <ArchiveHeader
+            active={archiveOpen}
+            notices={activeNotices}
+            today={today}
+            onOpen={openArchive}
+            onOpenSettings={openSettings}
+          />
           <Stack spacing={3}>
             <Box
               sx={{
@@ -180,7 +195,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                   backgroundImage: (theme) => `linear-gradient(to bottom, ${theme.palette.background.default}, transparent)`,
                 }}
               />
-              <Box
+              {!archiveOpen && <Box
                 sx={{
                   position: 'absolute',
                   inset: 0,
@@ -199,7 +214,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                     boxShadow: '0 0 28px rgba(35, 99, 255, .4)',
                   }}
                 />
-              </Box>
+              </Box>}
               {weekStartIndex > 0 && (
                 <Box
                   aria-hidden
@@ -236,7 +251,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                 <DayTab
                   key={day.key}
                   day={day}
-                  selected={Math.round(indicatorPosition) === index}
+                  selected={!archiveOpen && Math.round(indicatorPosition) === index}
                   celebrating={celebratingDay === day.key}
                   onSelect={(value) => {
                     setCompletedOpen(false)
@@ -248,7 +263,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
 
             <Box
               ref={swipePagerRef}
-              {...daySwipeHandlers}
+              {...(archiveOpen ? {} : daySwipeHandlers)}
               sx={{
                 touchAction: 'pan-y',
                 overflow: 'hidden',
@@ -284,7 +299,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
             ) : pendingTasks.length === 0 && !taskDraftOpen ? (
               <Stack spacing={1.5} sx={{ alignItems: 'center', py: 7, color: 'text.secondary', WebkitUserSelect: 'none', userSelect: 'none' }}>
                 <CheckCircleOutlineRoundedIcon sx={{ fontSize: 52, color: 'action.disabled' }} />
-                <Typography>Nothing planned for this day.</Typography>
+                <Typography>{archiveOpen ? 'No archived tasks.' : 'Nothing planned for this day.'}</Typography>
               </Stack>
             ) : (
             <SortableContext items={mainTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
@@ -421,7 +436,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           </DragOverlay>
         </DndContext>
 
-        <Box sx={{ position: 'fixed', right: { xs: 20, sm: 32 }, bottom: { xs: 20, sm: 32 }, zIndex: 10 }}>
+        {!archiveOpen && <Box sx={{ position: 'fixed', right: { xs: 20, sm: 32 }, bottom: { xs: 20, sm: 32 }, zIndex: 10 }}>
           <Fab
             color="primary"
             aria-label="Add task"
@@ -437,7 +452,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           >
             <AddRoundedIcon />
           </Fab>
-        </Box>
+        </Box>}
       </Stack>
   )
 }
