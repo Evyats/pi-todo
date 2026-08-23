@@ -1,0 +1,11 @@
+[Unit]
+Description=Check GitHub for a ready Pi Todo deployment
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Unit=pi-todo-update.service
+
+[Install]
+WantedBy=timers.target

@@ -59,3 +59,15 @@ sudo /opt/pi-todo/app/deploy.sh
 ```
 
 The private production URL is `/todo/`; its API is under `/todo/api/`.
+
+After the first deployment containing the update timer, the Pi checks the
+successful `deploy` branch every five minutes and deploys new builds
+automatically. Manual deployment remains available with the command above.
+
+Check the automation with:
+
+```bash
+systemctl list-timers pi-todo-update.timer
+sudo systemctl status pi-todo-update.service --no-pager
+sudo journalctl -u pi-todo-update.service -n 50 --no-pager
+```
