@@ -4,14 +4,12 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
-import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Collapse from '@mui/material/Collapse'
 import Fab from '@mui/material/Fab'
-import IconButton from '@mui/material/IconButton'
 import List from '@mui/material/List'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -23,6 +21,7 @@ import { InlineTaskComposer } from './InlineTaskComposer'
 import { playCompletionSound } from '../completionSound'
 import { remainingNoticeDays } from '../hooks/useNotices'
 import { calendarWeek } from '../dates'
+import { SCREEN_TOGGLE_WIDTH, ScreenToggle } from './ScreenToggle'
 
 const COMPLETION_DURATION = 340
 const COMPLETION_STAGGER = 70
@@ -33,7 +32,7 @@ function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSet
   return (
     <Stack spacing={0.75}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 48 }}>
-        <Box aria-hidden sx={{ width: 34, flexShrink: 0 }} />
+        <Box aria-hidden sx={{ width: SCREEN_TOGGLE_WIDTH, flexShrink: 0 }} />
         <Button
           ref={setNodeRef}
           color="inherit"
@@ -58,9 +57,7 @@ function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSet
             Week {calendarWeek(selectedDate)}
           </Typography>
         </Button>
-        <IconButton color="inherit" onClick={onOpenSettings} aria-label="Open settings" sx={{ width: 34, height: 34, flexShrink: 0, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}>
-          <SettingsOutlinedIcon />
-        </IconButton>
+        <ScreenToggle screen="tasks" onChange={(screen) => screen === 'settings' && onOpenSettings()} />
       </Box>
       {notices.length > 0 && (
         <Stack spacing={0.4} sx={{ alignItems: 'center' }}>
