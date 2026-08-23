@@ -25,7 +25,7 @@ export function SettingsScreen({
   return (
     <Stack spacing={3}>
       <Stack spacing={0.75}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 34 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 48 }}>
           <Box aria-hidden sx={{ width: 34, flexShrink: 0 }} />
           <Typography
             variant="h2"
