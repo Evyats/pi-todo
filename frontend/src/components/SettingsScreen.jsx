@@ -1,4 +1,3 @@
-import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded'
 import DarkModeRoundedIcon from '@mui/icons-material/DarkModeRounded'
 import LightModeRoundedIcon from '@mui/icons-material/LightModeRounded'
 import VolumeUpRoundedIcon from '@mui/icons-material/VolumeUpRounded'
@@ -14,6 +13,7 @@ import Switch from '@mui/material/Switch'
 import Typography from '@mui/material/Typography'
 import { SOUND_OPTIONS, playCompletionSound } from '../completionSound'
 import { NoticesManager, SettingsSection, TemplatesManager } from './SettingsComponents'
+import { SCREEN_TOGGLE_WIDTH, ScreenToggle } from './ScreenToggle'
 
 export function SettingsScreen({
   mode, onToggleMode, onClose, section, onSectionChange,
@@ -26,20 +26,14 @@ export function SettingsScreen({
     <Stack spacing={3}>
       <Stack spacing={0.75}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 48 }}>
-          <Box aria-hidden sx={{ width: 34, flexShrink: 0 }} />
+          <Box aria-hidden sx={{ width: SCREEN_TOGGLE_WIDTH, flexShrink: 0 }} />
           <Typography
             variant="h2"
             sx={{ flex: 1, minWidth: 0, textAlign: 'center', fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}
           >
             Settings
           </Typography>
-          <IconButton
-            aria-label="Back to tasks"
-            onClick={onClose}
-            sx={{ width: 34, height: 34, flexShrink: 0, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}
-          >
-            <ArrowBackRoundedIcon />
-          </IconButton>
+          <ScreenToggle screen="settings" onChange={(screen) => screen === 'tasks' && onClose()} />
         </Box>
         <Typography sx={{ color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center' }}>
           Some settings are device-specific
