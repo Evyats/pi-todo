@@ -18,3 +18,12 @@ export function upcomingDays(today) {
     }
   })
 }
+
+export function calendarWeek(date) {
+  const value = new Date(`${date}T12:00:00`)
+  const year = value.getFullYear()
+  const dayOfYear = Math.floor(
+    (Date.UTC(year, value.getMonth(), value.getDate()) - Date.UTC(year, 0, 1)) / 86_400_000,
+  )
+  return Math.floor((dayOfYear + new Date(year, 0, 1).getDay()) / 7) + 1
+}

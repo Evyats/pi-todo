@@ -56,6 +56,7 @@ export default function App({ mode, onToggleMode }) {
   const mainListRef = useRef(null)
   const boundaryPositionRef = useRef(null)
   const dragStartTasksRef = useRef(null)
+  const nextOptimisticTaskIdRef = useRef(-1)
   const [draggedTask, setDraggedTask] = useState(null)
   const [collapsingTaskId, setCollapsingTaskId] = useState(null)
   const sensors = useSensors(
@@ -204,22 +205,49 @@ export default function App({ mode, onToggleMode }) {
     event?.preventDefault()
     const title = (suggestion?.title ?? newTitle).trim()
     if (!title) return
+    const targetArchive = archiveOpen
+    const targetDate = selectedDate
+    const optimisticId = nextOptimisticTaskIdRef.current--
+    const optimisticTask = {
+      id: optimisticId,
+      title,
+      completed: false,
+      created_at: new Date().toISOString(),
+      scheduled_date: targetArchive ? null : targetDate,
+      estimated_minutes: suggestion?.estimated_minutes ?? null,
+      recurring_task_id: null,
+      parent_task_id: null,
+      is_divider: false,
+      optimistic: true,
+    }
+    const updateTarget = (value) => {
+      if (targetArchive) {
+        setArchivedTasks((current) => typeof value === 'function' ? value(current) : value)
+      } else {
+        updateTasksForDate(targetDate, value)
+      }
+    }
+
+    updateTarget((current) => [optimisticTask, ...current])
+    setNewTitle('')
+    setTaskDraftOpen(false)
+    setError('')
     try {
       const task = await request(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          scheduled_date: selectedDate,
+          scheduled_date: targetArchive ? null : targetDate,
           suggestion_id: suggestion?.id ?? null,
+          archived: targetArchive,
         }),
       })
-      updateSelectedDayTasks((current) => [task, ...current])
-      setNewTitle('')
-      setTaskDraftOpen(false)
+      updateTarget((current) => current.map((item) => item.id === optimisticId ? task : item))
       setError('')
     } catch (err) {
-      setError(err.message)
+      updateTarget((current) => current.filter((item) => item.id !== optimisticId))
+      setError(`Task was not saved: ${err.message}`)
     }
   }
 
@@ -607,7 +635,7 @@ export default function App({ mode, onToggleMode }) {
         navigation={{
           days, indicatorPosition, swipeAnimating, weekStartIndex, weekendStartIndex, celebratingDay,
           selectDate, swipePagerRef, daySwipeHandlers, swipeX, previousDate, nextDate,
-          openCompletedForDate, archiveOpen, openArchive,
+          openCompletedForDate, archiveOpen, openArchive, selectedDate,
         }}
         drag={{
           sensors, dragModeRef, setDragMode, pointerStartRef, boundaryPositionRef,

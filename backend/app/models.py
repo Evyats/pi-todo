@@ -8,6 +8,7 @@ class TaskCreate(BaseModel):
     title: str
     scheduled_date: date | None = None
     suggestion_id: int | None = None
+    archived: bool = False
 
     @field_validator("title")
     @classmethod

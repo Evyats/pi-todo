@@ -69,7 +69,8 @@ function CompletionEffect() {
 export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider = false, preview = false, celebrating = false, celebrationDelay = 0, children, soundEnabled, soundStyle, onUpdate, onDelete, onComplete }) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(task.title)
-  const titleEditable = !task.completed && task.recurring_task_id === null
+  const optimistic = task.optimistic === true
+  const titleEditable = !optimistic && !task.completed && task.recurring_task_id === null
   const {
     attributes,
     listeners,
@@ -80,7 +81,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
     isDragging,
   } = useSortable({
     id: preview ? `preview:${task.id}` : task.id,
-    disabled: task.completed || preview,
+    disabled: optimistic || task.completed || preview,
     data: { task },
   })
 
@@ -147,7 +148,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
       sx={{
         position: 'relative',
         zIndex: isDragging ? 1 : 'auto',
-        opacity: isDragging || collapsing ? 0 : 1,
+        opacity: isDragging || collapsing ? 0 : optimistic ? 0.62 : 1,
         transform: dragMode === 'reorder' ? CSS.Transform.toString(transform) : undefined,
         transition: [transition, 'opacity 120ms ease'].filter(Boolean).join(', '),
       }}
@@ -155,12 +156,16 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
     <ListItem
       divider={!hideDivider}
       disableGutters
+      aria-disabled={optimistic || undefined}
+      aria-busy={optimistic || undefined}
       sx={{
         minHeight: collapsing ? 0 : 56,
         maxHeight: collapsing ? 0 : 500,
         gap: { xs: 0.15, sm: 0.5 },
         py: collapsing ? 0 : 0.35,
         overflow: 'hidden',
+        pointerEvents: optimistic ? 'none' : 'auto',
+        userSelect: optimistic ? 'none' : 'auto',
         borderRadius: celebrating ? 1.5 : 0,
         bgcolor: isDragging ? 'action.hover' : 'transparent',
         animation: celebrating ? `${completionPulse} 340ms ${celebrationDelay}ms ease-out both` : 'none',
@@ -228,7 +233,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             px: 0.5,
             py: 0.7,
             overflowWrap: 'anywhere',
-            color: task.completed ? 'text.disabled' : 'text.primary',
+            color: task.completed || optimistic ? 'text.disabled' : 'text.primary',
             fontSize: '0.875rem',
             lineHeight: 1.75,
             fontWeight: 400,
@@ -248,7 +253,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             px: 0.5,
             py: 0.7,
             overflowWrap: 'anywhere',
-            color: task.completed ? 'text.disabled' : 'text.primary',
+            color: task.completed || optimistic ? 'text.disabled' : 'text.primary',
             fontSize: '0.875rem',
             lineHeight: 1.75,
             fontWeight: 400,
@@ -266,7 +271,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
         <IconButton
           color={task.completed || celebrating ? 'success' : 'default'}
           aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
-          disabled={celebrating}
+          disabled={optimistic || celebrating}
           onClick={toggleCompleted}
           sx={{
             width: 36,
@@ -283,7 +288,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
         ref={setActivatorNodeRef}
         data-no-day-swipe
         aria-label={`Move ${task.title}`}
-        disabled={task.completed}
+        disabled={optimistic || task.completed}
         {...attributes}
         {...listeners}
         sx={{ width: 36, height: 36, p: 0.75, color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
