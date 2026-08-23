@@ -5,8 +5,8 @@ from datetime import date
 from pathlib import Path
 
 from app.database import get_connection, initialize_database
-from app.main import list_tasks, schedule_task, set_task_parent, update_task
-from app.models import TaskParent, TaskSchedule, TaskUpdate
+from app.main import create_task, list_tasks, schedule_task, set_task_parent, update_task
+from app.models import TaskCreate, TaskParent, TaskSchedule, TaskUpdate
 
 
 class TaskUpdateTests(unittest.TestCase):
@@ -143,6 +143,13 @@ class TaskUpdateTests(unittest.TestCase):
 
         self.assertEqual({task.title for task in moved}, {"Parent", "Child"})
         self.assertEqual(next(task for task in moved if task.title == "Child").parent_task_id, parent_id)
+
+    def test_creates_a_task_directly_in_the_archive(self) -> None:
+        task = create_task(TaskCreate(title="Later", archived=True))
+
+        self.assertIsNone(task.scheduled_date)
+        archived = list_tasks(None, None, None, True)
+        self.assertEqual([item.title for item in archived], ["Later"])
 
 
 if __name__ == "__main__":

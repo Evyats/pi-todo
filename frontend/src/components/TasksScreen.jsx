@@ -22,11 +22,12 @@ import { TaskItem } from './TaskItem'
 import { InlineTaskComposer } from './InlineTaskComposer'
 import { playCompletionSound } from '../completionSound'
 import { remainingNoticeDays } from '../hooks/useNotices'
+import { calendarWeek } from '../dates'
 
 const COMPLETION_DURATION = 340
 const COMPLETION_STAGGER = 70
 
-function ArchiveHeader({ active, notices, today, onOpen, onOpenSettings }) {
+function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSettings }) {
   const { isOver, setNodeRef } = useDroppable({ id: 'archive' })
 
   return (
@@ -47,13 +48,14 @@ function ArchiveHeader({ active, notices, today, onOpen, onOpenSettings }) {
             px: 2,
             borderRadius: 2,
             color: 'text.primary',
+            textTransform: 'none',
             bgcolor: isOver ? 'action.selected' : active ? 'action.hover' : 'transparent',
             transition: 'background-color 120ms ease, box-shadow 120ms ease',
             boxShadow: isOver ? 1 : 0,
           }}
         >
           <Typography component="span" variant="h2" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}>
-            Tasks
+            Week {calendarWeek(selectedDate)}
           </Typography>
         </Button>
         <IconButton color="inherit" onClick={onOpenSettings} aria-label="Open settings" sx={{ width: 34, height: 34, flexShrink: 0, border: 1, borderColor: 'divider', '& svg': { fontSize: 20 } }}>
@@ -65,8 +67,10 @@ function ArchiveHeader({ active, notices, today, onOpen, onOpenSettings }) {
           {notices.map((notice) => {
             const daysLeft = remainingNoticeDays(notice.expires_on, today)
             return (
-              <Typography component="div" key={notice.id} sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400, textAlign: 'center', overflowWrap: 'anywhere' }}>
-                <bdi dir="auto">{notice.title}</bdi><span aria-hidden="true">·</span><span dir="ltr">{daysLeft}</span>
+              <Typography component="div" key={notice.id} dir="rtl" sx={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'flex-start', justifyContent: 'center', width: 'fit-content', maxWidth: '100%', gap: 0.5, color: 'text.secondary', fontSize: { xs: 12, sm: 13 }, fontWeight: 400 }}>
+                <span dir="ltr" style={{ flexShrink: 0 }}>{daysLeft}</span>
+                <span aria-hidden="true" style={{ flexShrink: 0 }}>·</span>
+                <bdi dir="auto" style={{ minWidth: 0, overflowWrap: 'anywhere', textAlign: 'center' }}>{notice.title}</bdi>
               </Typography>
             )
           })}
@@ -84,7 +88,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   const {
     days, indicatorPosition, swipeAnimating, weekStartIndex, weekendStartIndex, celebratingDay,
     selectDate, swipePagerRef, daySwipeHandlers, swipeX, previousDate, nextDate,
-    openCompletedForDate, archiveOpen, openArchive,
+    openCompletedForDate, archiveOpen, openArchive, selectedDate,
   } = navigation
   const {
     sensors, dragModeRef, setDragMode, pointerStartRef, boundaryPositionRef,
@@ -156,6 +160,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
             active={archiveOpen}
             notices={activeNotices}
             today={today}
+            selectedDate={selectedDate}
             onOpen={openArchive}
             onOpenSettings={openSettings}
           />
@@ -311,7 +316,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                       suggestions={suggestions}
                       onTitleChange={setNewTitle}
                       onAdd={addTask}
-                      onAddDivider={addDivider}
+                      onAddDivider={archiveOpen ? cancelTaskDraft : addDivider}
                       onCancel={cancelTaskDraft}
                     />
                   )}
@@ -436,7 +441,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           </DragOverlay>
         </DndContext>
 
-        {!archiveOpen && <Box sx={{ position: 'fixed', right: { xs: 20, sm: 32 }, bottom: { xs: 20, sm: 32 }, zIndex: 10 }}>
+        <Box sx={{ position: 'fixed', right: { xs: 20, sm: 32 }, bottom: { xs: 20, sm: 32 }, zIndex: 10 }}>
           <Fab
             color="primary"
             aria-label="Add task"
@@ -452,7 +457,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
           >
             <AddRoundedIcon />
           </Fab>
-        </Box>}
+        </Box>
       </Stack>
   )
 }
