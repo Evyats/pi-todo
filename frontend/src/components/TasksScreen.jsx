@@ -42,20 +42,35 @@ function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSet
           sx={{
             flex: 1,
             minWidth: 0,
-            minHeight: 48,
+            minHeight: { xs: 48, sm: 52 },
             mx: -1,
-            px: 2,
-            borderRadius: 2,
-            color: 'text.primary',
+            p: 0,
+            borderRadius: 0,
+            color: active ? 'primary.contrastText' : 'text.secondary',
             textTransform: 'none',
-            bgcolor: isOver ? 'action.selected' : active ? 'action.hover' : 'transparent',
-            transition: 'background-color 120ms ease, box-shadow 120ms ease',
-            boxShadow: isOver ? 1 : 0,
+            bgcolor: 'transparent',
+            '&:hover': { bgcolor: 'transparent' },
+            '&:hover .archive-week-pill': {
+              bgcolor: active ? 'primary.main' : 'action.hover',
+            },
           }}
         >
-          <Typography component="span" variant="h2" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}>
-            Week {calendarWeek(selectedDate)}
-          </Typography>
+          <Box
+            className="archive-week-pill"
+            sx={{
+              px: { xs: 1.75, sm: 2.25 },
+              py: { xs: 1, sm: 1.1 },
+              borderRadius: { xs: 2.75, sm: 3 },
+              bgcolor: active ? 'primary.main' : isOver ? 'action.hover' : 'transparent',
+              backgroundImage: active ? 'linear-gradient(145deg, #4b88ff, #225eff)' : 'none',
+              boxShadow: active ? '0 0 28px rgba(35, 99, 255, .4)' : 0,
+              transition: 'background-color 120ms ease, box-shadow 120ms ease',
+            }}
+          >
+            <Typography component="span" sx={{ fontSize: { xs: 15, sm: 17 }, fontWeight: 700, lineHeight: 1.15, letterSpacing: '.01em' }}>
+              Week {calendarWeek(selectedDate)}
+            </Typography>
+          </Box>
         </Button>
         <ScreenToggle screen="tasks" onChange={(screen) => screen === 'settings' && onOpenSettings()} />
       </Box>
