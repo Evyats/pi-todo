@@ -20,6 +20,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { playCompletionSound } from '../completionSound'
+import { SlideUpTransition } from './SlideUpTransition'
 
 const checkBounce = keyframes`
   0% { transform: scale(1); }
@@ -161,8 +162,9 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
       sx={{
         minHeight: collapsing ? 0 : 56,
         maxHeight: collapsing ? 0 : 500,
+        alignItems: 'center',
         gap: { xs: 0.15, sm: 0.5 },
-        py: collapsing ? 0 : 0.35,
+        py: 0,
         overflow: 'hidden',
         pointerEvents: optimistic ? 'none' : 'auto',
         userSelect: optimistic ? 'none' : 'auto',
@@ -213,7 +215,7 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
         <Box aria-hidden sx={{ width: 40, height: 40, flexShrink: 0 }} />
       )}
 
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box sx={{ display: 'flex', minWidth: 0, minHeight: 40, flex: 1, alignItems: 'center' }}>
       {editing && titleEditable ? (
         <Typography
           component="div"
@@ -266,35 +268,37 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
       )}
       </Box>
 
-      <Box sx={{ position: 'relative', width: 36, height: 40, flexShrink: 0 }}>
-        {celebrating && <CompletionEffect />}
+      <Box sx={{ display: 'flex', height: 40, alignItems: 'center', gap: 0, flexShrink: 0 }}>
+        <Box sx={{ position: 'relative', display: 'grid', width: 36, height: 40, flexShrink: 0, placeItems: 'center' }}>
+          {celebrating && <CompletionEffect />}
+          <IconButton
+            color={task.completed || celebrating ? 'success' : 'default'}
+            aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
+            disabled={optimistic || celebrating}
+            onClick={toggleCompleted}
+            sx={{
+              width: 36,
+              height: 36,
+              p: 0.75,
+              animation: celebrating ? `${checkBounce} 340ms ${celebrationDelay}ms ease-out both` : 'none',
+            }}
+          >
+            {task.completed || celebrating ? <CheckCircleOutlineRoundedIcon /> : <RadioButtonUncheckedRoundedIcon />}
+          </IconButton>
+        </Box>
+
         <IconButton
-          color={task.completed || celebrating ? 'success' : 'default'}
-          aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
-          disabled={optimistic || celebrating}
-          onClick={toggleCompleted}
-          sx={{
-            width: 36,
-            height: 36,
-            p: 0.75,
-            animation: celebrating ? `${checkBounce} 340ms ${celebrationDelay}ms ease-out both` : 'none',
-          }}
+          ref={setActivatorNodeRef}
+          data-no-day-swipe
+          aria-label={`Move ${task.title}`}
+          disabled={optimistic || task.completed}
+          {...attributes}
+          {...listeners}
+          sx={{ width: 36, height: 36, p: 0.75, color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
         >
-          {task.completed || celebrating ? <CheckCircleOutlineRoundedIcon /> : <RadioButtonUncheckedRoundedIcon />}
+          {task.recurring_task_id === null ? <DragIndicatorRoundedIcon /> : <RepeatRoundedIcon />}
         </IconButton>
       </Box>
-
-      <IconButton
-        ref={setActivatorNodeRef}
-        data-no-day-swipe
-        aria-label={`Move ${task.title}`}
-        disabled={optimistic || task.completed}
-        {...attributes}
-        {...listeners}
-        sx={{ width: 36, height: 36, p: 0.75, color: 'text.disabled', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
-      >
-        {task.recurring_task_id === null ? <DragIndicatorRoundedIcon /> : <RepeatRoundedIcon />}
-      </IconButton>
     </ListItem>
     {children}
     {editing && titleEditable && createPortal(
@@ -308,6 +312,8 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
           bgcolor: 'rgba(0, 0, 0, .42)',
         }}
       >
+        <SlideUpTransition in appear>
+        <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'center', px: 1.5, pt: { xs: 'max(16px, env(safe-area-inset-top))', sm: 0 }, pointerEvents: 'none' }}>
         <Paper
           component="form"
           role="dialog"
@@ -317,17 +323,14 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
           onSubmit={save}
           onClick={save}
           sx={{
-            position: 'absolute',
-            top: { xs: 'max(16px, env(safe-area-inset-top))', sm: '50%' },
-            left: '50%',
-            width: 'min(520px, calc(100vw - 24px))',
+            width: 'min(520px, 100%)',
             maxHeight: 'calc(100dvh - 32px)',
             overflowY: 'auto',
-            transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
             p: { xs: 2, sm: 2.5 },
             border: 1,
             borderColor: 'divider',
             borderRadius: 2,
+            pointerEvents: 'auto',
           }}
         >
           <TextField
@@ -355,6 +358,8 @@ export function TaskItem({ task, collapsing, dragMode = 'reorder', hideDivider =
             Press Enter or tap outside to save
           </Typography>
         </Paper>
+        </Box>
+        </SlideUpTransition>
       </Box>,
       document.body,
     )}

@@ -17,6 +17,7 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { dateKey } from '../dates'
 import { remainingNoticeDays } from '../hooks/useNotices'
+import { SlideUpTransition } from './SlideUpTransition'
 
 export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDelete, onMove = null }) {
   const [newTitle, setNewTitle] = useState('')
@@ -117,29 +118,29 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
 
         <Modal
           open={editingId !== null}
+          closeAfterTransition
           onClose={(_, reason) => {
             if (reason === 'backdropClick') saveSuggestion()
           }}
           aria-labelledby="template-editor-title"
         >
-          <Paper
-            component="form"
-            onSubmit={saveSuggestion}
-            elevation={8}
-            sx={{
-              position: 'fixed',
-              top: { xs: 'max(16px, env(safe-area-inset-top))', sm: '50%' },
-              left: '50%',
-              width: 'min(520px, calc(100vw - 24px))',
-              maxHeight: 'calc(100dvh - 32px)',
-              overflowY: 'auto',
-              transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' },
-              p: { xs: 2, sm: 2.5 },
-              border: 1,
-              borderColor: 'divider',
-              borderRadius: 2,
-            }}
-          >
+          <SlideUpTransition in={editingId !== null}>
+            <Box sx={{ position: 'fixed', inset: 0, display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'center', px: 1.5, pt: { xs: 'max(16px, env(safe-area-inset-top))', sm: 0 }, pointerEvents: 'none' }}>
+            <Paper
+              component="form"
+              onSubmit={saveSuggestion}
+              elevation={8}
+              sx={{
+                width: 'min(520px, 100%)',
+                maxHeight: 'calc(100dvh - 32px)',
+                overflowY: 'auto',
+                p: { xs: 2, sm: 2.5 },
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 2,
+                pointerEvents: 'auto',
+              }}
+            >
             <Typography id="template-editor-title" variant="h6" sx={{ mb: 1.5, fontWeight: 700 }}>
               Edit task
             </Typography>
@@ -174,7 +175,9 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
                 Save
               </Button>
             </Stack>
-          </Paper>
+            </Paper>
+            </Box>
+          </SlideUpTransition>
         </Modal>
     </Box>
   )
@@ -261,15 +264,19 @@ export function NoticesManager({ notices, onAdd, onUpdate, onDelete, onMove }) {
         </List>
       )}
 
-      <Modal open={editingId !== null} onClose={(_, reason) => { if (reason === 'backdropClick') saveNotice() }} aria-labelledby="notice-editor-title">
-        <Paper component="form" onSubmit={saveNotice} elevation={8} sx={{ position: 'fixed', top: { xs: 'max(16px, env(safe-area-inset-top))', sm: '50%' }, left: '50%', width: 'min(520px, calc(100vw - 24px))', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', transform: { xs: 'translateX(-50%)', sm: 'translate(-50%, -50%)' }, p: { xs: 2, sm: 2.5 }, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+      <Modal open={editingId !== null} closeAfterTransition onClose={(_, reason) => { if (reason === 'backdropClick') saveNotice() }} aria-labelledby="notice-editor-title">
+        <SlideUpTransition in={editingId !== null}>
+          <Box sx={{ position: 'fixed', inset: 0, display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'center', px: 1.5, pt: { xs: 'max(16px, env(safe-area-inset-top))', sm: 0 }, pointerEvents: 'none' }}>
+          <Paper component="form" onSubmit={saveNotice} elevation={8} sx={{ width: 'min(520px, 100%)', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', p: { xs: 2, sm: 2.5 }, border: 1, borderColor: 'divider', borderRadius: 2, pointerEvents: 'auto' }}>
           <Typography id="notice-editor-title" variant="h6" sx={{ mb: 1.5, fontWeight: 700 }}>Edit notice</Typography>
           <TextField autoFocus fullWidth multiline minRows={3} maxRows={7} label="Notice text" value={editingTitle} slotProps={{ htmlInput: { maxLength: 300 } }} onChange={(event) => setEditingTitle(event.target.value)} />
           <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mt: 1.5 }}>
             <TextField type="number" size="small" label="Days remaining" value={editingDays} slotProps={{ htmlInput: { min: 1, max: 365 } }} onChange={(event) => setEditingDays(event.target.value)} sx={{ width: 150 }} />
             <Button type="submit" variant="contained" disabled={saving || !editingTitle.trim() || !validDays(editingDays)} sx={{ ml: 'auto !important' }}>Save</Button>
           </Stack>
-        </Paper>
+          </Paper>
+          </Box>
+        </SlideUpTransition>
       </Modal>
     </Box>
   )

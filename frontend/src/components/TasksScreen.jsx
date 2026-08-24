@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { keyframes } from '@emotion/react'
 import { DndContext, DragOverlay, useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
@@ -25,13 +26,17 @@ import { SCREEN_TOGGLE_WIDTH, ScreenToggle } from './ScreenToggle'
 
 const COMPLETION_DURATION = 340
 const COMPLETION_STAGGER = 70
+const dayPillTravel = keyframes`
+  0%, 100% { transform: scaleY(1); }
+  22%, 56% { transform: scaleY(.72); }
+`
 
 function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSettings }) {
   const { isOver, setNodeRef } = useDroppable({ id: 'archive' })
 
   return (
     <Stack spacing={0.75}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 48 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: `${SCREEN_TOGGLE_WIDTH}px minmax(0, 1fr) ${SCREEN_TOGGLE_WIDTH}px`, alignItems: 'center', gap: 1, minHeight: 48 }}>
         <Box aria-hidden sx={{ width: SCREEN_TOGGLE_WIDTH, flexShrink: 0 }} />
         <Button
           ref={setNodeRef}
@@ -40,37 +45,24 @@ function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSet
           aria-label="Open archived tasks"
           aria-pressed={active}
           sx={{
-            flex: 1,
-            minWidth: 0,
-            minHeight: { xs: 48, sm: 52 },
-            mx: -1,
-            p: 0,
-            borderRadius: 0,
-            color: active ? 'primary.contrastText' : 'text.secondary',
+            minWidth: 'auto',
+            minHeight: 'auto',
+            justifySelf: 'center',
+            px: 1.5,
+            py: 0.6,
+            borderRadius: 999,
+            color: active ? 'primary.contrastText' : 'text.primary',
             textTransform: 'none',
-            bgcolor: 'transparent',
-            '&:hover': { bgcolor: 'transparent' },
-            '&:hover .archive-week-pill': {
-              bgcolor: active ? 'primary.main' : 'action.hover',
-            },
+            bgcolor: active ? 'primary.main' : isOver ? 'action.hover' : 'transparent',
+            backgroundImage: active ? 'linear-gradient(145deg, #4b88ff, #225eff)' : 'none',
+            boxShadow: active ? '0 0 24px rgba(35, 99, 255, .32)' : 0,
+            '&:hover': { bgcolor: active ? 'primary.main' : 'action.hover' },
+            transition: 'background-color 120ms ease, box-shadow 120ms ease',
           }}
         >
-          <Box
-            className="archive-week-pill"
-            sx={{
-              px: { xs: 1.75, sm: 2.25 },
-              py: { xs: 1, sm: 1.1 },
-              borderRadius: { xs: 2.75, sm: 3 },
-              bgcolor: active ? 'primary.main' : isOver ? 'action.hover' : 'transparent',
-              backgroundImage: active ? 'linear-gradient(145deg, #4b88ff, #225eff)' : 'none',
-              boxShadow: active ? '0 0 28px rgba(35, 99, 255, .4)' : 0,
-              transition: 'background-color 120ms ease, box-shadow 120ms ease',
-            }}
-          >
-            <Typography component="span" sx={{ fontSize: { xs: 15, sm: 17 }, fontWeight: 700, lineHeight: 1.15, letterSpacing: '.01em' }}>
-              Week {calendarWeek(selectedDate)}
-            </Typography>
-          </Box>
+          <Typography component="span" variant="h2" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}>
+            Week {calendarWeek(selectedDate)}
+          </Typography>
         </Button>
         <ScreenToggle screen="tasks" onChange={(screen) => screen === 'settings' && onOpenSettings()} />
       </Box>
@@ -94,6 +86,9 @@ function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSet
 
 export function TasksScreen({ data, navigation, drag, actions, ui }) {
   const [completionWave, setCompletionWave] = useState(new Map())
+  const [pillTravel, setPillTravel] = useState(null)
+  const pillTravelIdRef = useRef(0)
+  const pillTravelTimerRef = useRef(null)
   const {
     tasks, tasksByDate, pendingTasks, mainTasks, completedTasks, childrenByParent,
   } = data
@@ -118,6 +113,25 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   } = ui
   const completed = completedTasks.length
   const activeNotices = notices.filter((notice) => remainingNoticeDays(notice.expires_on, today) > 0)
+
+  useEffect(() => () => {
+    if (pillTravelTimerRef.current) window.clearTimeout(pillTravelTimerRef.current)
+  }, [])
+
+  function animatePillTo(value) {
+    if (archiveOpen || value === selectedDate) return
+    const currentIndex = days.findIndex((day) => day.key === selectedDate)
+    const targetIndex = days.findIndex((day) => day.key === value)
+    if (currentIndex < 0 || targetIndex < 0) return
+    const duration = Math.min(340, 190 + (Math.abs(targetIndex - currentIndex) * 30))
+    pillTravelIdRef.current += 1
+    setPillTravel({ id: pillTravelIdRef.current, duration })
+    if (pillTravelTimerRef.current) window.clearTimeout(pillTravelTimerRef.current)
+    pillTravelTimerRef.current = window.setTimeout(() => setPillTravel(null), duration + 80)
+  }
+
+  const pillDistance = Math.abs(indicatorPosition - Math.round(indicatorPosition))
+  const pillScaleY = 1 - (0.28 * Math.sin(Math.PI * pillDistance))
 
   async function completeTask(task) {
     const family = [task, ...(childrenByParent.get(task.id) ?? [])]
@@ -218,10 +232,14 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                   inset: 0,
                   width: '20%',
                   transform: `translateX(${indicatorPosition * 100}%)`,
-                  transition: swipeAnimating ? 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
+                  transition: swipeAnimating || swipeX === 0
+                    ? `transform ${pillTravel?.duration ?? 120}ms cubic-bezier(0.16, 1, 0.3, 1)`
+                    : 'none',
+                  '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
                 }}
               >
                 <Box
+                  key={pillTravel?.id ?? 'pill-idle'}
                   sx={{
                     position: 'absolute',
                     inset: { xs: '0 14px', sm: '0 18px' },
@@ -229,6 +247,19 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                     bgcolor: 'primary.main',
                     backgroundImage: 'linear-gradient(145deg, #4b88ff, #225eff)',
                     boxShadow: '0 0 28px rgba(35, 99, 255, .4)',
+                    transform: `scaleY(${pillScaleY})`,
+                    transformOrigin: 'center',
+                    transition: pillTravel || (!swipeAnimating && swipeX !== 0)
+                      ? 'none'
+                      : 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)',
+                    animation: pillTravel
+                      ? `${dayPillTravel} ${pillTravel.duration}ms cubic-bezier(0.16, 1, 0.3, 1)`
+                      : 'none',
+                    '@media (prefers-reduced-motion: reduce)': {
+                      transform: 'scaleY(1)',
+                      transition: 'none',
+                      animation: 'none',
+                    },
                   }}
                 />
               </Box>}
@@ -272,6 +303,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                   celebrating={celebratingDay === day.key}
                   onSelect={(value) => {
                     setCompletedOpen(false)
+                    animatePillTo(value)
                     selectDate(value)
                   }}
                 />

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { flushSync } from 'react-dom'
 import CssBaseline from '@mui/material/CssBaseline'
 import { createTheme, ThemeProvider } from '@mui/material/styles'
 import App from './App.jsx'
@@ -39,12 +40,23 @@ export default function ThemeRoot() {
       ?.setAttribute('content', mode === 'dark' ? '#0b0d12' : '#f7f8fc')
   }, [mode])
 
+  function toggleMode() {
+    const updateMode = () => setMode((current) => current === 'light' ? 'dark' : 'light')
+    if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      updateMode()
+      return
+    }
+    document.startViewTransition(() => {
+      flushSync(updateMode)
+    })
+  }
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <App
         mode={mode}
-        onToggleMode={() => setMode((current) => current === 'light' ? 'dark' : 'light')}
+        onToggleMode={toggleMode}
       />
     </ThemeProvider>
   )
