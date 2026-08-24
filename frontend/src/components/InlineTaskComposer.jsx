@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import Autocomplete from '@mui/material/Autocomplete'
 import Box from '@mui/material/Box'
 import ListItem from '@mui/material/ListItem'
@@ -9,7 +9,7 @@ export function InlineTaskComposer({ title, suggestions, onTitleChange, onAdd, o
   const savingRef = useRef(false)
   const cancelledRef = useRef(false)
 
-  async function save(event, suggestion = null) {
+  const save = useCallback(async (event, suggestion = null) => {
     event?.preventDefault()
     if (savingRef.current) return
     const value = (suggestion?.title ?? title).trim()
@@ -17,7 +17,48 @@ export function InlineTaskComposer({ title, suggestions, onTitleChange, onAdd, o
     if (value) await onAdd(null, suggestion)
     else await onAddDivider()
     savingRef.current = false
-  }
+  }, [onAdd, onAddDivider, title])
+
+  useEffect(() => {
+    let outsidePointerActive = false
+
+    function belongsToComposer(target) {
+      if (!(target instanceof Element)) return false
+      return Boolean(
+        rowRef.current?.contains(target)
+        || target.closest('[role="option"], .MuiAutocomplete-popper'),
+      )
+    }
+
+    function consume(event) {
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+    }
+
+    function handlePointerDown(event) {
+      if (belongsToComposer(event.target)) {
+        outsidePointerActive = false
+        return
+      }
+      outsidePointerActive = true
+      consume(event)
+    }
+
+    function handleClick(event) {
+      if (!outsidePointerActive && belongsToComposer(event.target)) return
+      outsidePointerActive = false
+      consume(event)
+      save()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    document.addEventListener('click', handleClick, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+      document.removeEventListener('click', handleClick, true)
+    }
+  }, [save])
 
   function handleBlur(event) {
     if (cancelledRef.current) return
