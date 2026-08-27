@@ -5,8 +5,8 @@ from datetime import date
 from pathlib import Path
 
 from app.database import get_connection, initialize_database
-from app.main import create_task, list_tasks, schedule_task, set_task_parent, update_task
-from app.models import TaskCreate, TaskParent, TaskSchedule, TaskUpdate
+from app.main import create_divider, create_task, list_tasks, schedule_task, set_task_parent, update_task
+from app.models import DividerCreate, TaskCreate, TaskParent, TaskSchedule, TaskUpdate
 
 
 class TaskUpdateTests(unittest.TestCase):
@@ -150,6 +150,14 @@ class TaskUpdateTests(unittest.TestCase):
         self.assertIsNone(task.scheduled_date)
         archived = list_tasks(None, None, None, True)
         self.assertEqual([item.title for item in archived], ["Later"])
+
+    def test_creates_a_divider_directly_in_the_archive(self) -> None:
+        divider = create_divider(DividerCreate(archived=True))
+
+        self.assertIsNone(divider.scheduled_date)
+        self.assertTrue(divider.is_divider)
+        archived = list_tasks(None, None, None, True)
+        self.assertEqual([item.id for item in archived], [divider.id])
 
 
 if __name__ == "__main__":

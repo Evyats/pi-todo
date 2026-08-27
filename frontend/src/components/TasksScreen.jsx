@@ -23,6 +23,7 @@ import { playCompletionSound } from '../completionSound'
 import { remainingNoticeDays } from '../hooks/useNotices'
 import { calendarWeek } from '../dates'
 import { SCREEN_TOGGLE_WIDTH, ScreenToggle } from './ScreenToggle'
+import { useConstantAutoScroll } from '../drag/useConstantAutoScroll'
 
 const COMPLETION_DURATION = 340
 const COMPLETION_STAGGER = 70
@@ -30,8 +31,16 @@ const dayPillTravel = keyframes`
   0%, 100% { transform: scaleY(1); }
   22%, 56% { transform: scaleY(.72); }
 `
+const weekPillTeleportIn = keyframes`
+  from { transform: scale(0); }
+  to { transform: scale(1); }
+`
+const weekPillTeleportOut = keyframes`
+  from { transform: scale(1); }
+  to { transform: scale(0); }
+`
 
-function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSettings }) {
+function ArchiveHeader({ active, teleportPhase, notices, today, selectedDate, onOpen, onOpenSettings }) {
   const { isOver, setNodeRef } = useDroppable({ id: 'archive' })
 
   return (
@@ -47,17 +56,36 @@ function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSet
           sx={{
             minWidth: 'auto',
             minHeight: 'auto',
+            position: 'relative',
             justifySelf: 'center',
             px: 1.5,
             py: 0.6,
             borderRadius: 999,
             color: active ? 'primary.contrastText' : 'text.primary',
             textTransform: 'none',
-            bgcolor: active ? 'primary.main' : isOver ? 'action.hover' : 'transparent',
-            backgroundImage: active ? 'linear-gradient(145deg, #4b88ff, #225eff)' : 'none',
-            boxShadow: active ? '0 0 24px rgba(35, 99, 255, .32)' : 0,
-            '&:hover': { bgcolor: active ? 'primary.main' : 'action.hover' },
-            transition: 'background-color 120ms ease, box-shadow 120ms ease',
+            bgcolor: isOver && !active ? 'action.hover' : 'transparent',
+            transition: 'background-color 120ms ease, color 120ms ease',
+            isolation: 'isolate',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              zIndex: -1,
+              borderRadius: 'inherit',
+              bgcolor: active ? 'primary.main' : 'transparent',
+              backgroundImage: active ? 'linear-gradient(145deg, #4b88ff, #225eff)' : 'none',
+              boxShadow: active ? '0 0 24px rgba(35, 99, 255, .32)' : 0,
+              transformOrigin: 'center',
+              animation: teleportPhase === 'arrive'
+                ? `${weekPillTeleportIn} 190ms cubic-bezier(0.16, 1, 0.3, 1)`
+                : teleportPhase === 'return-depart'
+                ? `${weekPillTeleportOut} 140ms cubic-bezier(.4, 0, 1, 1) forwards`
+                : 'none',
+            },
+            '&:hover': { bgcolor: active ? 'transparent' : 'action.hover' },
+            '@media (prefers-reduced-motion: reduce)': {
+              '&::before': { animation: 'none' },
+            },
           }}
         >
           <Typography component="span" variant="h2" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: { xs: 23, sm: 27 }, fontWeight: 800, letterSpacing: '-.045em' }}>
@@ -87,8 +115,10 @@ function ArchiveHeader({ active, notices, today, selectedDate, onOpen, onOpenSet
 export function TasksScreen({ data, navigation, drag, actions, ui }) {
   const [completionWave, setCompletionWave] = useState(new Map())
   const [pillTravel, setPillTravel] = useState(null)
+  const [archiveTeleportPhase, setArchiveTeleportPhase] = useState(null)
   const pillTravelIdRef = useRef(0)
   const pillTravelTimerRef = useRef(null)
+  const archiveTeleportTimerRef = useRef(null)
   const {
     tasks, tasksByDate, pendingTasks, mainTasks, completedTasks, childrenByParent,
   } = data
@@ -113,10 +143,50 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
   } = ui
   const completed = completedTasks.length
   const activeNotices = notices.filter((notice) => remainingNoticeDays(notice.expires_on, today) > 0)
+  useConstantAutoScroll(Boolean(draggedTask))
 
   useEffect(() => () => {
     if (pillTravelTimerRef.current) window.clearTimeout(pillTravelTimerRef.current)
+    if (archiveTeleportTimerRef.current) window.clearTimeout(archiveTeleportTimerRef.current)
   }, [])
+
+  async function teleportToArchive() {
+    if (archiveOpen || archiveTeleportPhase) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      await openArchive()
+      return
+    }
+    setArchiveTeleportPhase('depart')
+    archiveTeleportTimerRef.current = window.setTimeout(async () => {
+      const opened = await openArchive()
+      if (!opened) {
+        setArchiveTeleportPhase(null)
+        return
+      }
+      setArchiveTeleportPhase('arrive')
+      archiveTeleportTimerRef.current = window.setTimeout(
+        () => setArchiveTeleportPhase(null),
+        230,
+      )
+    }, 150)
+  }
+
+  function teleportFromArchive(value) {
+    if (!archiveOpen || archiveTeleportPhase) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      selectDate(value)
+      return
+    }
+    setArchiveTeleportPhase('return-depart')
+    archiveTeleportTimerRef.current = window.setTimeout(() => {
+      selectDate(value)
+      setArchiveTeleportPhase('return-arrive')
+      archiveTeleportTimerRef.current = window.setTimeout(
+        () => setArchiveTeleportPhase(null),
+        230,
+      )
+    }, 150)
+  }
 
   function animatePillTo(value) {
     if (archiveOpen || value === selectedDate) return
@@ -151,6 +221,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
       <Stack spacing={3}>
         <DndContext
           sensors={sensors}
+          autoScroll={false}
           collisionDetection={(args) => taskOrDayCollision(args, dragModeRef.current)}
           onDragStart={({ active, activatorEvent }) => {
             dragModeRef.current = 'reorder'
@@ -184,10 +255,11 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
         >
           <ArchiveHeader
             active={archiveOpen}
+            teleportPhase={archiveTeleportPhase}
             notices={activeNotices}
             today={today}
             selectedDate={selectedDate}
-            onOpen={openArchive}
+            onOpen={teleportToArchive}
             onOpenSettings={openSettings}
           />
           <Stack spacing={3}>
@@ -247,13 +319,19 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                     bgcolor: 'primary.main',
                     backgroundImage: 'linear-gradient(145deg, #4b88ff, #225eff)',
                     boxShadow: '0 0 28px rgba(35, 99, 255, .4)',
-                    transform: `scaleY(${pillScaleY})`,
+                    transform: archiveTeleportPhase === 'depart'
+                      ? 'scale(0)'
+                      : `scaleY(${pillScaleY})`,
                     transformOrigin: 'center',
-                    transition: pillTravel || (!swipeAnimating && swipeX !== 0)
+                    transition: archiveTeleportPhase === 'depart'
+                      ? 'transform 140ms cubic-bezier(.4, 0, 1, 1)'
+                      : pillTravel || (!swipeAnimating && swipeX !== 0)
                       ? 'none'
                       : 'transform 120ms cubic-bezier(0.16, 1, 0.3, 1)',
                     animation: pillTravel
                       ? `${dayPillTravel} ${pillTravel.duration}ms cubic-bezier(0.16, 1, 0.3, 1)`
+                      : archiveTeleportPhase === 'return-arrive'
+                      ? `${weekPillTeleportIn} 190ms cubic-bezier(0.16, 1, 0.3, 1)`
                       : 'none',
                     '@media (prefers-reduced-motion: reduce)': {
                       transform: 'scaleY(1)',
@@ -300,9 +378,14 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                   key={day.key}
                   day={day}
                   selected={!archiveOpen && Math.round(indicatorPosition) === index}
+                  teleporting={archiveTeleportPhase === 'depart' && day.key === selectedDate}
                   celebrating={celebratingDay === day.key}
                   onSelect={(value) => {
                     setCompletedOpen(false)
+                    if (archiveOpen) {
+                      teleportFromArchive(value)
+                      return
+                    }
                     animatePillTo(value)
                     selectDate(value)
                   }}
@@ -360,7 +443,7 @@ export function TasksScreen({ data, navigation, drag, actions, ui }) {
                       suggestions={suggestions}
                       onTitleChange={setNewTitle}
                       onAdd={addTask}
-                      onAddDivider={archiveOpen ? cancelTaskDraft : addDivider}
+                      onAddDivider={addDivider}
                       onCancel={cancelTaskDraft}
                     />
                   )}

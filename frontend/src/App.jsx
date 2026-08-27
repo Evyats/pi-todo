@@ -57,6 +57,7 @@ export default function App({ mode, onToggleMode }) {
   const boundaryPositionRef = useRef(null)
   const dragStartTasksRef = useRef(null)
   const nextOptimisticTaskIdRef = useRef(-1)
+  const historyRestoreIdRef = useRef(0)
   const [draggedTask, setDraggedTask] = useState(null)
   const [collapsingTaskId, setCollapsingTaskId] = useState(null)
   const sensors = useSensors(
@@ -72,12 +73,15 @@ export default function App({ mode, onToggleMode }) {
       return { ...current, [targetDate]: nextDay }
     })
   }
-  function updateSelectedDayTasks(value) {
-    if (archiveOpen) {
+  function updateTaskArea(targetArchive, targetDate, value) {
+    if (targetArchive) {
       setArchivedTasks((current) => typeof value === 'function' ? value(current) : value)
       return
     }
-    updateTasksForDate(selectedDate, value)
+    updateTasksForDate(targetDate, value)
+  }
+  function updateSelectedDayTasks(value) {
+    updateTaskArea(archiveOpen, selectedDate, value)
   }
   const suggestionsStore = useTemplates(SUGGESTIONS_API, setError)
   const recurringStore = useTemplates(RECURRING_API, setError, () => {
@@ -114,8 +118,51 @@ export default function App({ mode, onToggleMode }) {
   }, [days])
 
   useEffect(() => {
+    window.history.replaceState({
+      ...window.history.state,
+      todoView: 'day',
+      todoDate: dateKey(),
+    }, '')
+
     const handleHistoryChange = () => {
-      setScreen(window.history.state?.todoScreen === 'settings' ? 'settings' : 'tasks')
+      const restoreId = ++historyRestoreIdRef.current
+      const state = window.history.state ?? {}
+      const view = state.todoView ?? 'day'
+      if (view !== 'archive') setLoading(false)
+      setCompletedOpen(false)
+      setNewTitle('')
+      setTaskDraftOpen(false)
+
+      if (view === 'settings') {
+        setScreen('settings')
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+        return
+      }
+
+      setScreen('tasks')
+      if (view === 'archive') {
+        if (state.todoDate) setSelectedDate(state.todoDate)
+        setLoading(true)
+        request(`${API}?archived=true`)
+          .then((loadedTasks) => {
+            if (restoreId !== historyRestoreIdRef.current) return
+            setArchivedTasks(loadedTasks)
+            setArchiveOpen(true)
+            setError('')
+            window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+          })
+          .catch((err) => {
+            if (restoreId === historyRestoreIdRef.current) setError(err.message)
+          })
+          .finally(() => {
+            if (restoreId === historyRestoreIdRef.current) setLoading(false)
+          })
+        return
+      }
+
+      setArchiveOpen(false)
+      setSelectedDate(state.todoDate ?? dateKey())
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
     }
     window.addEventListener('popstate', handleHistoryChange)
     return () => window.removeEventListener('popstate', handleHistoryChange)
@@ -123,6 +170,11 @@ export default function App({ mode, onToggleMode }) {
 
   function selectDate(value) {
     if (value === selectedDate && !archiveOpen) return
+    window.history.pushState({
+      ...window.history.state,
+      todoView: 'day',
+      todoDate: value,
+    }, '')
     setArchiveOpen(false)
     setSelectedDate(value)
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
@@ -136,17 +188,24 @@ export default function App({ mode, onToggleMode }) {
       const loadedTasks = await request(`${API}?archived=true`)
       setArchivedTasks(loadedTasks)
       setArchiveOpen(true)
+      window.history.pushState({
+        ...window.history.state,
+        todoView: 'archive',
+        todoDate: selectedDate,
+      }, '')
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
       setError('')
+      return true
     } catch (err) {
       setError(err.message)
+      return false
     } finally {
       setLoading(false)
     }
   }
 
   function openCompletedForDate(value) {
-    setSelectedDate(value)
+    selectDate(value)
     setCompletedOpen(true)
   }
 
@@ -164,12 +223,16 @@ export default function App({ mode, onToggleMode }) {
   })
 
   function openSettings() {
-    window.history.pushState({ ...window.history.state, todoScreen: 'settings' }, '')
+    window.history.pushState({
+      ...window.history.state,
+      todoView: 'settings',
+      todoDate: selectedDate,
+    }, '')
     setScreen('settings')
   }
 
   function closeSettings() {
-    if (window.history.state?.todoScreen === 'settings') {
+    if (window.history.state?.todoView === 'settings') {
       window.history.back()
     } else {
       setScreen('tasks')
@@ -220,15 +283,7 @@ export default function App({ mode, onToggleMode }) {
       is_divider: false,
       optimistic: true,
     }
-    const updateTarget = (value) => {
-      if (targetArchive) {
-        setArchivedTasks((current) => typeof value === 'function' ? value(current) : value)
-      } else {
-        updateTasksForDate(targetDate, value)
-      }
-    }
-
-    updateTarget((current) => [optimisticTask, ...current])
+    updateTaskArea(targetArchive, targetDate, (current) => [optimisticTask, ...current])
     setNewTitle('')
     setTaskDraftOpen(false)
     setError('')
@@ -243,22 +298,27 @@ export default function App({ mode, onToggleMode }) {
           archived: targetArchive,
         }),
       })
-      updateTarget((current) => current.map((item) => item.id === optimisticId ? task : item))
+      updateTaskArea(targetArchive, targetDate, (current) => current.map((item) => item.id === optimisticId ? task : item))
       setError('')
     } catch (err) {
-      updateTarget((current) => current.filter((item) => item.id !== optimisticId))
+      updateTaskArea(targetArchive, targetDate, (current) => current.filter((item) => item.id !== optimisticId))
       setError(`Task was not saved: ${err.message}`)
     }
   }
 
   async function addDivider() {
+    const targetArchive = archiveOpen
+    const targetDate = selectedDate
     try {
       const divider = await request(`${API}/divider`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scheduled_date: selectedDate }),
+        body: JSON.stringify({
+          scheduled_date: targetArchive ? null : targetDate,
+          archived: targetArchive,
+        }),
       })
-      updateSelectedDayTasks((current) => [divider, ...current])
+      updateTaskArea(targetArchive, targetDate, (current) => [divider, ...current])
       setNewTitle('')
       setTaskDraftOpen(false)
       setError('')

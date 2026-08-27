@@ -18,7 +18,7 @@ const dayDropRipple = keyframes`
   100% { transform: scale(1.12); opacity: 0; }
 `
 
-export function DayTab({ day, selected, celebrating, onSelect }) {
+export function DayTab({ day, selected, celebrating, teleporting = false, onSelect }) {
   const { isOver, setNodeRef } = useDroppable({ id: `day:${day.key}` })
 
   return (
@@ -34,10 +34,11 @@ export function DayTab({ day, selected, celebrating, onSelect }) {
           width: 'auto',
           height: 'auto',
           borderRadius: { xs: 2.75, sm: 3 },
-          color: selected ? 'primary.contrastText' : 'text.secondary',
+          color: selected && !teleporting ? 'primary.contrastText' : 'text.secondary',
           bgcolor: isOver ? 'action.hover' : 'transparent',
           boxShadow: 0,
-          transition: 'background-color 120ms ease, box-shadow 120ms ease',
+          transition: 'background-color 120ms ease, box-shadow 120ms ease, color 120ms ease',
+          '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
           '@media (hover: hover) and (pointer: fine)': {
             '&:hover': {
               bgcolor: 'action.hover',
