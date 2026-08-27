@@ -416,10 +416,14 @@ def create_task(payload: TaskCreate) -> Task:
     status_code=status.HTTP_201_CREATED,
 )
 def create_divider(payload: DividerCreate) -> Task:
-    scheduled_date = (payload.scheduled_date or date.today()).isoformat()
+    scheduled_date = (
+        None
+        if payload.archived
+        else (payload.scheduled_date or date.today()).isoformat()
+    )
     with get_connection() as connection:
         next_order = connection.execute(
-            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date = ?",
+            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM tasks WHERE scheduled_date IS ?",
             (scheduled_date,),
         ).fetchone()[0]
         cursor = connection.execute(

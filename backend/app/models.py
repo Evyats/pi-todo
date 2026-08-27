@@ -62,6 +62,7 @@ class TaskParent(BaseModel):
 
 class DividerCreate(BaseModel):
     scheduled_date: date | None = None
+    archived: bool = False
 
 
 class SuggestionCreate(BaseModel):
