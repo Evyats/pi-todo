@@ -2,15 +2,13 @@ import { useDroppable } from '@dnd-kit/core'
 import { keyframes } from '@emotion/react'
 import DragIndicatorRoundedIcon from '@mui/icons-material/DragIndicatorRounded'
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
-import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Collapse from '@mui/material/Collapse'
-import List from '@mui/material/List'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { StaticTaskItem } from './TaskItem'
+import { CompletedSection, TaskTree } from './TaskTree'
 import { organizeTasks } from '../taskSelectors'
 
 const dayDropRipple = keyframes`
@@ -105,7 +103,6 @@ export function DraggedTask({ task, leavingParent = false, removingDivider = fal
 
 export function StaticDayPanel({ tasks, completedOpen, onOpenCompleted }) {
   const { pending, main, completed, childrenByParent } = organizeTasks(tasks)
-  const ignore = async () => {}
   return (
     <Stack spacing={3} sx={{ px: 0.5, pointerEvents: 'none' }}>
       {pending.length === 0 ? (
@@ -115,71 +112,27 @@ export function StaticDayPanel({ tasks, completedOpen, onOpenCompleted }) {
         </Stack>
       ) : (
         <Box sx={{ px: { xs: 0.5, sm: 1 }, bgcolor: 'transparent' }}>
-          <List disablePadding>
-            {main.map((task) => {
-              const subtasks = childrenByParent.get(task.id) ?? []
-              return (
-                <StaticTaskItem
-                  key={task.id}
-                  task={task}
-                  collapsing={false}
-                  hideDivider={subtasks.length > 0}
-                  soundEnabled={false}
-                  onUpdate={ignore}
-                  onDelete={ignore}
-                >
-                  {subtasks.length > 0 && (
-                    <List disablePadding sx={{ mr: { xs: 4.5, sm: 5 } }}>
-                      {subtasks.map((subtask) => (
-                        <StaticTaskItem
-                          key={subtask.id}
-                          task={subtask}
-                          collapsing={false}
-                          soundEnabled={false}
-                          onUpdate={ignore}
-                          onDelete={ignore}
-                        />
-                      ))}
-                    </List>
-                  )}
-                </StaticTaskItem>
-              )
-            })}
-          </List>
+          <TaskTree
+            mainTasks={main}
+            childrenByParent={childrenByParent}
+            renderTask={(task, options) => (
+              <StaticTaskItem
+                key={task.id}
+                task={task}
+                hideDivider={options.hideDivider}
+              >
+                {options.children}
+              </StaticTaskItem>
+            )}
+          />
         </Box>
       )}
-      {completed.length > 0 && (
-        <Paper
-          elevation={0}
-          sx={{
-            border: 1,
-            borderColor: 'divider',
-            borderRadius: 3,
-            overflow: 'hidden',
-            bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(20, 23, 30, .72)' : 'background.paper',
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          <Button
-            color="inherit"
-            fullWidth
-            onClick={onOpenCompleted}
-            sx={{ justifyContent: 'space-between', px: 2, py: 1.25, color: 'text.secondary', pointerEvents: 'auto' }}
-          >
-            Completed ({completed.length})
-            <ExpandMoreRoundedIcon sx={{ transform: completedOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 180ms ease' }} />
-          </Button>
-          <Collapse in={completedOpen}>
-            <Box sx={{ px: { xs: 0.5, sm: 2 }, borderTop: 1, borderColor: 'divider' }}>
-              <List disablePadding>
-                {completed.map((task) => (
-                  <StaticTaskItem key={task.id} task={task} collapsing={false} soundEnabled={false} onUpdate={ignore} onDelete={ignore} />
-                ))}
-              </List>
-            </Box>
-          </Collapse>
-        </Paper>
-      )}
+      <CompletedSection
+        tasks={completed}
+        open={completedOpen}
+        onToggle={onOpenCompleted}
+        renderTask={(task) => <StaticTaskItem key={task.id} task={task} />}
+      />
       <Box aria-hidden sx={{ height: { xs: 72, sm: 88 }, flexShrink: 0 }} />
     </Stack>
   )

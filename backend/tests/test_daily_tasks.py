@@ -53,8 +53,12 @@ class DailyTaskServiceTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(len(rows), 1)
         self.assertEqual(dict(rows[0]), {"title": "Exercise", "estimated_minutes": 30})
+        divider_count = self.connection.execute(
+            "SELECT COUNT(*) FROM tasks WHERE is_divider = 1"
+        ).fetchone()[0]
+        self.assertEqual(divider_count, 1)
 
-    def test_new_day_orders_recurring_planned_and_carried_groups(self) -> None:
+    def test_new_day_orders_planned_carried_divider_and_recurring_groups(self) -> None:
         today = date.today().isoformat()
         self.connection.executemany(
             "INSERT INTO recurring_tasks (title, sort_order) VALUES (?, ?)",
@@ -81,11 +85,11 @@ class DailyTaskServiceTests(unittest.TestCase):
         carry_over_incomplete_tasks(self.connection)
         create_today_recurring_tasks(self.connection)
 
-        main_titles = [
-            row["title"]
+        main_items = [
+            (row["title"], bool(row["is_divider"]))
             for row in self.connection.execute(
                 """
-                SELECT title FROM tasks
+                SELECT title, is_divider FROM tasks
                 WHERE scheduled_date = ? AND parent_task_id IS NULL
                 ORDER BY sort_order, id
                 """,
@@ -93,8 +97,15 @@ class DailyTaskServiceTests(unittest.TestCase):
             )
         ]
         self.assertEqual(
-            main_titles,
-            ["First routine", "Second routine", "Already planned", "Old parent", "Old second"],
+            main_items,
+            [
+                ("Already planned", False),
+                ("Old parent", False),
+                ("Old second", False),
+                ("Divider", True),
+                ("First routine", False),
+                ("Second routine", False),
+            ],
         )
         child = self.connection.execute(
             "SELECT scheduled_date, parent_task_id FROM tasks WHERE id = ?",

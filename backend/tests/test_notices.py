@@ -5,8 +5,13 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from app.database import get_connection, initialize_database
-from app.main import create_notice, list_notices, reorder_notices, update_notice
 from app.models import NoticeCreate, NoticeOrder, NoticeUpdate
+from app.services.notice_service import (
+    create_notice,
+    list_notices,
+    reorder_notices,
+    update_notice,
+)
 
 
 class NoticeTests(unittest.TestCase):

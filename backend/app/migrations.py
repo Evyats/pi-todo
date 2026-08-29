@@ -1,10 +1,12 @@
 from datetime import date
 from sqlite3 import Connection
 
+from .constants import MAX_ESTIMATE_MINUTES
+
 
 def migrate(connection: Connection) -> None:
     connection.execute(
-        """
+        f"""
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL CHECK(length(trim(title)) > 0),
@@ -26,7 +28,7 @@ def migrate(connection: Connection) -> None:
     if "estimated_minutes" not in columns:
         connection.execute(
             "ALTER TABLE tasks ADD COLUMN estimated_minutes INTEGER "
-            "CHECK(estimated_minutes BETWEEN 1 AND 120)"
+            f"CHECK(estimated_minutes BETWEEN 1 AND {MAX_ESTIMATE_MINUTES})"
         )
     if "recurring_task_id" not in columns:
         connection.execute("ALTER TABLE tasks ADD COLUMN recurring_task_id INTEGER")
@@ -39,11 +41,11 @@ def migrate(connection: Connection) -> None:
         )
 
     connection.execute(
-        """
+        f"""
         CREATE TABLE IF NOT EXISTS suggestions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK(length(trim(title)) > 0),
-            estimated_minutes INTEGER CHECK(estimated_minutes BETWEEN 1 AND 120),
+            estimated_minutes INTEGER CHECK(estimated_minutes BETWEEN 1 AND {MAX_ESTIMATE_MINUTES}),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -54,16 +56,16 @@ def migrate(connection: Connection) -> None:
     if "estimated_minutes" not in suggestion_columns:
         connection.execute(
             "ALTER TABLE suggestions ADD COLUMN estimated_minutes INTEGER "
-            "CHECK(estimated_minutes BETWEEN 1 AND 120)"
+            f"CHECK(estimated_minutes BETWEEN 1 AND {MAX_ESTIMATE_MINUTES})"
         )
     elif suggestion_columns["estimated_minutes"][3] == 1:
         connection.executescript(
-            """
+            f"""
             ALTER TABLE suggestions RENAME TO suggestions_with_default;
             CREATE TABLE suggestions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK(length(trim(title)) > 0),
-                estimated_minutes INTEGER CHECK(estimated_minutes BETWEEN 1 AND 120),
+                estimated_minutes INTEGER CHECK(estimated_minutes BETWEEN 1 AND {MAX_ESTIMATE_MINUTES}),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             INSERT INTO suggestions (id, title, estimated_minutes, created_at)
@@ -76,11 +78,11 @@ def migrate(connection: Connection) -> None:
         )
 
     connection.execute(
-        """
+        f"""
         CREATE TABLE IF NOT EXISTS recurring_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK(length(trim(title)) > 0),
-            estimated_minutes INTEGER CHECK(estimated_minutes BETWEEN 1 AND 120),
+            estimated_minutes INTEGER CHECK(estimated_minutes BETWEEN 1 AND {MAX_ESTIMATE_MINUTES}),
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
