@@ -1,0 +1,2 @@
+export const MAX_ESTIMATE_MINUTES = 90
+export const DRAG_HANDLE_ZONE_WIDTH = 64

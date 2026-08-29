@@ -58,6 +58,15 @@ def carry_over_incomplete_tasks(connection: Connection) -> None:
 
 def create_today_recurring_tasks(connection: Connection) -> None:
     today = date.today().isoformat()
+    has_existing_recurring = connection.execute(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM tasks
+            WHERE recurring_task_id IS NOT NULL AND scheduled_date = ?
+        )
+        """,
+        (today,),
+    ).fetchone()[0]
     templates = connection.execute(
         """
         SELECT id, title, estimated_minutes FROM recurring_tasks
@@ -73,9 +82,18 @@ def create_today_recurring_tasks(connection: Connection) -> None:
     if not templates:
         return
     first_order = connection.execute(
-        "SELECT COALESCE(MIN(sort_order), 0) - ? FROM tasks WHERE scheduled_date = ?",
-        (len(templates), today),
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tasks WHERE scheduled_date = ?",
+        (today,),
     ).fetchone()[0]
+    if not has_existing_recurring:
+        connection.execute(
+            """
+            INSERT INTO tasks (title, completed, sort_order, scheduled_date, is_divider)
+            VALUES ('Divider', 0, ?, ?, 1)
+            """,
+            (first_order, today),
+        )
+        first_order += 1
     connection.executemany(
         """
         INSERT INTO tasks (

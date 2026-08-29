@@ -16,6 +16,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { dateKey } from '../dates'
+import { MAX_ESTIMATE_MINUTES } from '../constants'
 import { remainingNoticeDays } from '../hooks/useNotices'
 import { SlideUpTransition } from './SlideUpTransition'
 
@@ -37,7 +38,7 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
 
   async function saveSuggestion(event) {
     event?.preventDefault()
-    const valid = editingTitle.trim() && (editingMinutes === '' || (editingMinutes >= 1 && editingMinutes <= 90))
+    const valid = editingTitle.trim() && (editingMinutes === '' || (editingMinutes >= 1 && editingMinutes <= MAX_ESTIMATE_MINUTES))
     if (!valid || savingEdit) return
     setSavingEdit(true)
     if (await onUpdate(editingId, editingTitle, editingMinutes)) setEditingId(null)
@@ -60,11 +61,11 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
             size="small"
             label="Minutes"
             value={newMinutes}
-            slotProps={{ htmlInput: { min: 1, max: 90 } }}
+            slotProps={{ htmlInput: { min: 1, max: MAX_ESTIMATE_MINUTES } }}
             onChange={(event) => setNewMinutes(event.target.value === '' ? '' : Number(event.target.value))}
             sx={{ width: 105, flexShrink: 0 }}
           />
-          <Button type="submit" variant="contained" disabled={!newTitle.trim() || (newMinutes !== '' && (newMinutes < 1 || newMinutes > 90))} aria-label="Add suggestion">
+          <Button type="submit" variant="contained" disabled={!newTitle.trim() || (newMinutes !== '' && (newMinutes < 1 || newMinutes > MAX_ESTIMATE_MINUTES))} aria-label="Add suggestion">
             +
           </Button>
         </Stack>
@@ -91,7 +92,7 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
                     {template.estimated_minutes && (
                       <LinearProgress
                         variant="determinate"
-                        value={(template.estimated_minutes / 90) * 100}
+                        value={(template.estimated_minutes / MAX_ESTIMATE_MINUTES) * 100}
                         aria-label={`${template.estimated_minutes} minute estimate`}
                         sx={{ height: 5, mt: 0.75, borderRadius: 99 }}
                       />
@@ -167,11 +168,11 @@ export function TemplatesManager({ emptyText, templates, onAdd, onUpdate, onDele
                 size="small"
                 label="Minutes"
                 value={editingMinutes}
-                slotProps={{ htmlInput: { min: 1, max: 90 } }}
+                slotProps={{ htmlInput: { min: 1, max: MAX_ESTIMATE_MINUTES } }}
                 onChange={(event) => setEditingMinutes(event.target.value === '' ? '' : Number(event.target.value))}
                 sx={{ width: 120 }}
               />
-              <Button type="submit" variant="contained" disabled={savingEdit || !editingTitle.trim() || (editingMinutes !== '' && (editingMinutes < 1 || editingMinutes > 90))} sx={{ ml: 'auto !important' }}>
+              <Button type="submit" variant="contained" disabled={savingEdit || !editingTitle.trim() || (editingMinutes !== '' && (editingMinutes < 1 || editingMinutes > MAX_ESTIMATE_MINUTES))} sx={{ ml: 'auto !important' }}>
                 Save
               </Button>
             </Stack>

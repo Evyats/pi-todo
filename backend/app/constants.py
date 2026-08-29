@@ -1,0 +1,2 @@
+API_PREFIX = "/todo/api"
+MAX_ESTIMATE_MINUTES = 90

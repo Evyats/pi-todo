@@ -3,12 +3,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .constants import MAX_ESTIMATE_MINUTES
+
 
 class TaskCreate(BaseModel):
     title: str
     scheduled_date: date | None = None
     suggestion_id: int | None = None
-    archived: bool = False
+    unassigned: bool = False
 
     @field_validator("title")
     @classmethod
@@ -62,12 +64,14 @@ class TaskParent(BaseModel):
 
 class DividerCreate(BaseModel):
     scheduled_date: date | None = None
-    archived: bool = False
+    unassigned: bool = False
 
 
 class SuggestionCreate(BaseModel):
     title: str
-    estimated_minutes: int | None = Field(default=None, ge=1, le=90)
+    estimated_minutes: int | None = Field(
+        default=None, ge=1, le=MAX_ESTIMATE_MINUTES
+    )
 
     @field_validator("title")
     @classmethod

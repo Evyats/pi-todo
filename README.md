@@ -49,6 +49,18 @@ API documentation is at <http://127.0.0.1:8000/docs>.
 The SQLite database is created at `backend/data/tasks.db`. That directory is
 ignored by Git so deployments cannot overwrite your tasks.
 
+## Checks
+
+```powershell
+cd pi-todo\backend
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+
+cd ..\frontend
+npm test
+npm run lint
+npm run build
+```
+
 ## Deploy to the Raspberry Pi
 
 Push changes to `main`, then check [GitHub Actions](https://github.com/Evyats/pi-todo/actions).
