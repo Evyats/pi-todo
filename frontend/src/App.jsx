@@ -96,6 +96,27 @@ export default function App({ mode, onToggleMode }) {
     (day, index) => index > 0 && day.weekdayIndex === 5,
   )
 
+  useEffect(() => {
+    function handleArrowDayChange(event) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return
+      if (navigation.screen !== 'tasks' || navigation.unassignedOpen) return
+      const target = event.target
+      if (target instanceof HTMLElement && (
+        target.isContentEditable
+        || target.closest('input, textarea, select, button, [role="dialog"]')
+      )) return
+      const direction = event.key === 'ArrowRight' ? 1 : -1
+      if (direction === 1 && !nextDate) return
+      if (direction === -1 && !previousDate) return
+      event.preventDefault()
+      navigation.setCompletedOpen(false)
+      daySwipe.stepDay(direction)
+    }
+    window.addEventListener('keydown', handleArrowDayChange)
+    return () => window.removeEventListener('keydown', handleArrowDayChange)
+  }, [navigation, previousDate, nextDate, daySwipe])
+
   return (
     <Container
       maxWidth="sm"

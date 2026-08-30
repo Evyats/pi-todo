@@ -79,11 +79,32 @@ export function useDaySwipe({ days, selectedDate, onSelectDate, onBeforeSelect }
     }
   }
 
+  function stepDay(direction) {
+    if (startRef.current) return
+    const currentIndex = days.findIndex((day) => day.key === selectedDate)
+    const targetIndex = currentIndex + direction
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= days.length) return
+    const width = pagerRef.current?.clientWidth || 1
+    setPagerWidth(width)
+    onBeforeSelect?.()
+    setAnimating(true)
+    const targetOffset = direction === 1 ? -width : width
+    offsetRef.current = targetOffset
+    setOffset(targetOffset)
+    window.setTimeout(() => {
+      onSelectDate(days[targetIndex].key)
+      setAnimating(false)
+      offsetRef.current = 0
+      setOffset(0)
+    }, ANIMATION_MS)
+  }
+
   return {
     offset,
     pagerWidth,
     animating,
     pagerRef,
+    stepDay,
     pointerHandlers: {
       onPointerDown: start,
       onPointerMove: move,
